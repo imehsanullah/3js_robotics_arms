@@ -1,6 +1,6 @@
 # Three.js Robot Physics
 
-Interactive Three.js robot-arm viewer built from official robot description assets. The current robot registry includes UR5e, Franka Panda / FP3, and UFACTORY xArm7.
+Interactive Three.js robot visualization and kinematic action platform built from official robot description assets. The current registry includes UR5e, Franka Panda / FP3, and UFACTORY xArm7.
 
 ## Run
 
@@ -20,9 +20,11 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Forward kinematics with live tool-frame pose.
 - CCD inverse kinematics for a movable tool target.
 - Browser-only `MoveGroupLite` API for named targets, joint targets, pose targets, planning, execution, and stop.
+- Keyframe action playback for preview motions such as `wave_preview`.
 - Collision checking between non-adjacent official collision meshes using BVH mesh intersection.
 - Inertial mass properties, per-link center of mass markers, total center of mass, and gravity torque estimates per joint.
-- Robot definitions are centralized in `src/robots.ts` so new arms can be added without threading constants through the viewer.
+- Robot definitions live under `src/robots/definitions/` and describe groups, frames, capabilities, presets, and actions.
+- A `SimulationBackend` interface is in place so a real physics backend can be added later without replacing the UI/control layer.
 
 ## Browser Move Group API
 
@@ -53,12 +55,34 @@ arm.stop();
 
 The browser implementation is intentionally MoveIt-like, not full MoveIt. It uses joint-space interpolation, the existing CCD IK for pose targets, velocity limits, and optional mesh collision checks.
 
+## Browser Action API
+
+Robot definitions can expose named keyframe actions. The current app plays the robot's `defaultAction` from the play button, and actions can also be sampled from code:
+
+```js
+const actionName = 'wave_preview';
+// See src/motion/actionPlayer.ts for reusable action sampling/playback.
+```
+
+Actions are kinematic previews, not dynamic simulations.
+
+## Code Structure
+
+- `src/main.ts`: app orchestration only.
+- `src/robots/`: generic robot types, registry, and per-robot definitions.
+- `src/rendering/`: scene setup, URDF loading, materials, overlays, disposal.
+- `src/physics/`: collision collection/checks, inertials/COM, gravity torque readouts.
+- `src/motion/`: joint state, CCD IK, and keyframe action playback.
+- `src/simulation/`: backend interface and current kinematic backend.
+- `src/ui/`: DOM bindings, robot selector, controls, and readouts.
+
 ## Adding Another Robot
 
 1. Copy the upstream robot description assets into `public/<package_name>`.
 2. Generate a static URDF that keeps `package://<package_name>/...` mesh references.
-3. Add a `RobotDefinition` entry in `src/robots.ts` with joint specs, presets, link chain, downstream link map, tool frame, and camera defaults.
-4. The selector, controls, physics overlays, and `MoveGroupLite` groups are built from that definition automatically.
+3. Add a `RobotDefinition` file under `src/robots/definitions/` with joint specs, groups, frame aliases, presets, actions, capabilities, collision link chain, downstream link map, and camera defaults.
+4. Export the definition from `src/robots/registry.ts`.
+5. The selector, controls, action playback, physics overlays, and `MoveGroupLite` groups are built from that definition automatically.
 
 ## Asset Source
 

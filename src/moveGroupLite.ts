@@ -85,6 +85,7 @@ export interface MoveGroupAdapter {
 
 export interface MoveGroupLiteOptions {
   jointSpecs: JointSpec[];
+  defaultGroupName?: string;
   groups?: Record<string, JointName[]>;
   namedTargets?: Record<string, JointValues>;
 }
@@ -97,6 +98,7 @@ type TargetSpec =
 export class MoveGroupLite {
   private readonly adapter: MoveGroupAdapter;
   private readonly jointSpecs: JointSpec[];
+  private readonly defaultGroupName: string;
   private readonly groups: Record<string, JointName[]>;
   private readonly namedTargets: Record<string, JointValues>;
   private readonly groupInstances = new Map<string, MoveGroup>();
@@ -104,6 +106,7 @@ export class MoveGroupLite {
   constructor(adapter: MoveGroupAdapter, options: MoveGroupLiteOptions) {
     this.adapter = adapter;
     this.jointSpecs = options.jointSpecs;
+    this.defaultGroupName = options.defaultGroupName ?? 'manipulator';
 
     const defaultJointNames = this.jointSpecs.map(spec => spec.name);
     this.groups = options.groups ?? {
@@ -113,7 +116,7 @@ export class MoveGroupLite {
     this.namedTargets = options.namedTargets ?? {};
   }
 
-  group(name = 'manipulator') {
+  group(name = this.defaultGroupName) {
     const jointNames = this.groups[name];
     if (!jointNames) {
       throw new Error(`Unknown MoveGroupLite group: ${name}`);
