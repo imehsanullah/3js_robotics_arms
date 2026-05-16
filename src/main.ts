@@ -155,6 +155,7 @@ async function loadRobot(robotId: string) {
       return;
     }
 
+    configureRobotMaterials(robotModel, materials, elements.collisionToggle.checked);
     robotAssetsReady = true;
     collisionMeshes = activeRobot.capabilities.supportsCollision
       ? collectCollisionMeshes(robotModel, materials.collision)

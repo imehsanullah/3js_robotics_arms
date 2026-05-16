@@ -32,7 +32,11 @@ export function createUrdfLoader(manager: THREE.LoadingManager, robots: RobotDef
   return loader;
 }
 
-export function configureRobotMaterials(model: URDFRobot, materials: RobotMaterials, collisionVisible: boolean) {
+export function configureRobotMaterials(
+  model: URDFRobot,
+  materials: RobotMaterials,
+  collisionVisible: boolean,
+) {
   model.traverse(object => {
     object.castShadow = true;
     object.receiveShadow = true;

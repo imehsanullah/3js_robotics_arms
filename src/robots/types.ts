@@ -44,6 +44,11 @@ export interface RobotActionDefinition {
   keyframes: RobotActionKeyframe[];
 }
 
+export interface RobotCollisionMetadata {
+  adjacentLinkChains: string[][];
+  disabledPairs: Array<[string, string]>;
+}
+
 export interface RobotDefinition {
   id: string;
   name: string;
@@ -59,6 +64,7 @@ export interface RobotDefinition {
   toolFrames: Record<RobotFrameName, string>;
   defaultToolFrame: RobotFrameName;
   linkChain: string[];
+  collision: RobotCollisionMetadata;
   downstreamLinks: Record<JointName, string[]>;
   presets: Record<PoseName, JointValues>;
   actions: Record<RobotActionName, RobotActionDefinition>;

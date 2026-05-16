@@ -36,13 +36,20 @@ export function collectCollisionMeshes(model: URDFRobot, material: THREE.Materia
 
 export function buildCollisionPairs(robot: RobotDefinition, collisionMeshes: CollisionMesh[]) {
   const collisionPairSet = new Set<string>();
-  const linkIndex = new Map(robot.linkChain.map((linkName, index) => [linkName, index]));
+  const disabledPairs = new Set(robot.collision.disabledPairs.map(pair => pairKey(pair[0], pair[1])));
+  const adjacentPairs = new Set<string>();
+  for (const chain of robot.collision.adjacentLinkChains) {
+    for (let index = 1; index < chain.length; index += 1) {
+      adjacentPairs.add(pairKey(chain[index - 1], chain[index]));
+    }
+  }
 
   for (let i = 0; i < collisionMeshes.length; i += 1) {
     for (let j = i + 1; j < collisionMeshes.length; j += 1) {
       const a = collisionMeshes[i];
       const b = collisionMeshes[j];
-      if (shouldSkipCollisionPair(linkIndex, a.linkName, b.linkName)) {
+      const key = pairKey(a.linkName, b.linkName);
+      if (disabledPairs.has(key) || adjacentPairs.has(key)) {
         continue;
       }
       collisionPairSet.add(`${i}:${j}`);
@@ -107,11 +114,6 @@ function findParentLink(object: THREE.Object3D): URDFLink | null {
   return null;
 }
 
-function shouldSkipCollisionPair(linkIndex: Map<string, number>, a: string, b: string) {
-  const indexA = linkIndex.get(a);
-  const indexB = linkIndex.get(b);
-  if (indexA === undefined || indexB === undefined) {
-    return false;
-  }
-  return Math.abs(indexA - indexB) <= 1;
+function pairKey(a: string, b: string) {
+  return [a, b].sort().join('::');
 }

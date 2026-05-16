@@ -24,6 +24,7 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Collision checking between non-adjacent official collision meshes using BVH mesh intersection.
 - Inertial mass properties, per-link center of mass markers, total center of mass, and gravity torque estimates per joint.
 - Robot definitions are loaded from JSON configs under `public/robots/` and describe groups, frames, capabilities, presets, and actions.
+- Config-driven robot metadata keeps arm-style manipulators extendable without robot-specific runtime code.
 - A `SimulationBackend` interface is in place so a real physics backend can be added later without replacing the UI/control layer.
 
 ## Browser Move Group API
@@ -79,9 +80,9 @@ Actions are kinematic previews, not dynamic simulations.
 
 ## Adding Another Robot
 
-1. Copy the upstream robot description assets into `public/<package_name>`.
+1. Copy the upstream robot description assets into `public/<package_name>` and preserve the upstream license.
 2. Generate a static URDF that keeps `package://<package_name>/...` mesh references.
-3. Add `public/robots/<robot_id>/robot.json` with joint specs, groups, frame aliases, presets, actions, capabilities, collision link chain, downstream link map, and camera defaults.
+3. Add `public/robots/<robot_id>/robot.json` with joint specs, groups, frame aliases, presets, actions, capabilities, collision metadata, downstream link map, and camera defaults.
 4. Add that config path to `public/robots/index.json`.
 5. The selector, controls, action playback, physics overlays, and `MoveGroupLite` groups are built from that config automatically.
 

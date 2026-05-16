@@ -4,6 +4,7 @@ import type {
   JointValues,
   RobotActionDefinition,
   RobotCapabilities,
+  RobotCollisionMetadata,
   RobotDefinition,
   RobotGroupDefinition,
   RobotRegistry,
@@ -94,6 +95,7 @@ function normalizeRobotDefinition(raw: unknown, sourcePath: string): RobotDefini
     toolFrames: normalizedToolFrames,
     defaultToolFrame,
     linkChain: optionalStringArray(record.linkChain, `${sourcePath}.linkChain`),
+    collision: normalizeCollisionMetadata(record.collision, record.linkChain, `${sourcePath}.collision`),
     downstreamLinks: normalizeStringArrayRecord(record.downstreamLinks, `${sourcePath}.downstreamLinks`),
     presets: normalizeJointValueMaps(record.presets, jointNames, `${sourcePath}.presets`),
     actions,
@@ -105,6 +107,39 @@ function normalizeRobotDefinition(raw: unknown, sourcePath: string): RobotDefini
     initialTarget: normalizeVector(record.initialTarget, `${sourcePath}.initialTarget`),
     camera: normalizeCamera(record.camera, `${sourcePath}.camera`),
   };
+}
+
+function normalizeCollisionMetadata(raw: unknown, fallbackLinkChain: unknown, sourcePath: string): RobotCollisionMetadata {
+  if (raw === undefined) {
+    const linkChain = optionalStringArray(fallbackLinkChain, `${sourcePath}.fallbackLinkChain`);
+    return {
+      adjacentLinkChains: linkChain.length > 0 ? [linkChain] : [],
+      disabledPairs: [],
+    };
+  }
+
+  const collisionRaw = asRecord(raw, sourcePath);
+  const chainsRaw = collisionRaw.adjacentLinkChains;
+  const adjacentLinkChains =
+    chainsRaw === undefined
+      ? []
+      : requiredArray(collisionRaw, 'adjacentLinkChains', sourcePath).map((item, index) =>
+          asStringArray(item, `${sourcePath}.adjacentLinkChains[${index}]`),
+        );
+
+  const disabledPairsRaw = collisionRaw.disabledPairs;
+  const disabledPairs =
+    disabledPairsRaw === undefined
+      ? []
+      : requiredArray(collisionRaw, 'disabledPairs', sourcePath).map((item, index) => {
+          const pair = asStringArray(item, `${sourcePath}.disabledPairs[${index}]`);
+          if (pair.length !== 2) {
+            throw new Error(`Collision disabled pair must contain exactly two links: ${sourcePath}.disabledPairs[${index}]`);
+          }
+          return [pair[0], pair[1]] as [string, string];
+        });
+
+  return { adjacentLinkChains, disabledPairs };
 }
 
 function normalizeJointSpec(raw: unknown, sourcePath: string): JointSpec {
