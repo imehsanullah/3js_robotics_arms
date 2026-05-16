@@ -1,0 +1,137 @@
+{
+  "id": "ur5e",
+  "name": "Universal Robots UR5e",
+  "shortName": "UR5e",
+  "description": "Official UR ROS2 meshes and URDF-derived kinematics",
+  "packageName": "ur_description",
+  "packagePath": "/ur_description",
+  "urdfPath": "/ur_description/urdf/ur5e.urdf",
+  "rootLink": "base_link_inertia",
+  "jointSpecs": [
+    { "name": "shoulder_pan_joint", "label": "Shoulder pan", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.141592653589793, "effort": 150 },
+    { "name": "shoulder_lift_joint", "label": "Shoulder lift", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.141592653589793, "effort": 150 },
+    { "name": "elbow_joint", "label": "Elbow", "lower": -3.141592653589793, "upper": 3.141592653589793, "velocity": 3.141592653589793, "effort": 150 },
+    { "name": "wrist_1_joint", "label": "Wrist 1", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.141592653589793, "effort": 28 },
+    { "name": "wrist_2_joint", "label": "Wrist 2", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.141592653589793, "effort": 28 },
+    { "name": "wrist_3_joint", "label": "Wrist 3", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.141592653589793, "effort": 28 }
+  ],
+  "groups": {
+    "manipulator": {
+      "name": "manipulator",
+      "label": "Manipulator",
+      "jointNames": ["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
+      "defaultFrame": "tool",
+      "supportsIk": true
+    },
+    "arm": {
+      "name": "arm",
+      "label": "Arm",
+      "jointNames": ["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
+      "defaultFrame": "tool",
+      "supportsIk": true
+    }
+  },
+  "defaultGroup": "manipulator",
+  "toolFrames": {
+    "tool": "tool0"
+  },
+  "defaultToolFrame": "tool",
+  "linkChain": [
+    "base_link_inertia",
+    "shoulder_link",
+    "upper_arm_link",
+    "forearm_link",
+    "wrist_1_link",
+    "wrist_2_link",
+    "wrist_3_link"
+  ],
+  "downstreamLinks": {
+    "shoulder_pan_joint": ["shoulder_link", "upper_arm_link", "forearm_link", "wrist_1_link", "wrist_2_link", "wrist_3_link"],
+    "shoulder_lift_joint": ["upper_arm_link", "forearm_link", "wrist_1_link", "wrist_2_link", "wrist_3_link"],
+    "elbow_joint": ["forearm_link", "wrist_1_link", "wrist_2_link", "wrist_3_link"],
+    "wrist_1_joint": ["wrist_1_link", "wrist_2_link", "wrist_3_link"],
+    "wrist_2_joint": ["wrist_2_link", "wrist_3_link"],
+    "wrist_3_joint": ["wrist_3_link"]
+  },
+  "presets": {
+    "zero": {
+      "shoulder_pan_joint": 0,
+      "shoulder_lift_joint": 0,
+      "elbow_joint": 0,
+      "wrist_1_joint": 0,
+      "wrist_2_joint": 0,
+      "wrist_3_joint": 0
+    },
+    "ready": {
+      "shoulder_pan_joint": -0.4886921905584123,
+      "shoulder_lift_joint": -1.6057029118347832,
+      "elbow_joint": 1.8151424220741028,
+      "wrist_1_joint": -1.8151424220741028,
+      "wrist_2_joint": -1.5707963267948966,
+      "wrist_3_joint": 0
+    },
+    "folded": {
+      "shoulder_pan_joint": 0,
+      "shoulder_lift_joint": -2.234021442552742,
+      "elbow_joint": 2.303834612632515,
+      "wrist_1_joint": -1.6755160819145563,
+      "wrist_2_joint": -1.5707963267948966,
+      "wrist_3_joint": 0
+    },
+    "reach": {
+      "shoulder_pan_joint": 0.5934119456780721,
+      "shoulder_lift_joint": -1.2566370614359172,
+      "elbow_joint": 1.53588974175501,
+      "wrist_1_joint": -1.9547687622336491,
+      "wrist_2_joint": -1.53588974175501,
+      "wrist_3_joint": 0.7330382858376184
+    }
+  },
+  "actions": {
+    "ready": {
+      "name": "ready",
+      "label": "Ready",
+      "duration": 1.2,
+      "keyframes": [
+        { "time": 0, "joints": { "shoulder_pan_joint": 0, "shoulder_lift_joint": -2.234021442552742, "elbow_joint": 2.303834612632515, "wrist_1_joint": -1.6755160819145563, "wrist_2_joint": -1.5707963267948966, "wrist_3_joint": 0 } },
+        { "time": 1.2, "joints": { "shoulder_pan_joint": -0.4886921905584123, "shoulder_lift_joint": -1.6057029118347832, "elbow_joint": 1.8151424220741028, "wrist_1_joint": -1.8151424220741028, "wrist_2_joint": -1.5707963267948966, "wrist_3_joint": 0 } }
+      ]
+    },
+    "reach": {
+      "name": "reach",
+      "label": "Reach",
+      "duration": 1.2,
+      "keyframes": [
+        { "time": 0, "joints": { "shoulder_pan_joint": -0.4886921905584123, "shoulder_lift_joint": -1.6057029118347832, "elbow_joint": 1.8151424220741028, "wrist_1_joint": -1.8151424220741028, "wrist_2_joint": -1.5707963267948966, "wrist_3_joint": 0 } },
+        { "time": 1.2, "joints": { "shoulder_pan_joint": 0.5934119456780721, "shoulder_lift_joint": -1.2566370614359172, "elbow_joint": 1.53588974175501, "wrist_1_joint": -1.9547687622336491, "wrist_2_joint": -1.53588974175501, "wrist_3_joint": 0.7330382858376184 } }
+      ]
+    },
+    "wave_preview": {
+      "name": "wave_preview",
+      "label": "Wave Preview",
+      "duration": 3,
+      "loop": true,
+      "keyframes": [
+        { "time": 0, "joints": { "shoulder_pan_joint": -0.4886921905584123, "shoulder_lift_joint": -1.6057029118347832, "elbow_joint": 1.8151424220741028, "wrist_1_joint": -1.8151424220741028, "wrist_2_joint": -1.5707963267948966, "wrist_3_joint": 0 } },
+        { "time": 0.75, "joints": { "shoulder_pan_joint": 0.5934119456780721, "shoulder_lift_joint": -1.2566370614359172, "elbow_joint": 1.53588974175501, "wrist_1_joint": -1.9547687622336491, "wrist_2_joint": -1.53588974175501, "wrist_3_joint": -0.9 } },
+        { "time": 1.5, "joints": { "shoulder_pan_joint": 0.5934119456780721, "shoulder_lift_joint": -1.2566370614359172, "elbow_joint": 1.53588974175501, "wrist_1_joint": -1.9547687622336491, "wrist_2_joint": -1.53588974175501, "wrist_3_joint": 0.9 } },
+        { "time": 2.25, "joints": { "shoulder_pan_joint": 0.5934119456780721, "shoulder_lift_joint": -1.2566370614359172, "elbow_joint": 1.53588974175501, "wrist_1_joint": -1.9547687622336491, "wrist_2_joint": -1.53588974175501, "wrist_3_joint": -0.7 } },
+        { "time": 3, "joints": { "shoulder_pan_joint": -0.4886921905584123, "shoulder_lift_joint": -1.6057029118347832, "elbow_joint": 1.8151424220741028, "wrist_1_joint": -1.8151424220741028, "wrist_2_joint": -1.5707963267948966, "wrist_3_joint": 0 } }
+      ]
+    }
+  },
+  "defaultAction": "wave_preview",
+  "capabilities": {
+    "fixedBase": true,
+    "supportsCollision": true,
+    "supportsInertials": true,
+    "supportsGravityTorques": true,
+    "supportsIk": true,
+    "supportsActions": true
+  },
+  "initialTarget": { "x": -0.48, "y": -0.34, "z": 0.46 },
+  "camera": {
+    "position": { "x": 1.35, "y": -1.65, "z": 1.12 },
+    "target": { "x": -0.22, "y": 0, "z": 0.46 }
+  }
+}

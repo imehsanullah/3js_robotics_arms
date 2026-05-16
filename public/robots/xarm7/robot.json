@@ -1,0 +1,103 @@
+{
+  "id": "xarm7",
+  "name": "UFACTORY xArm7",
+  "shortName": "xArm7",
+  "description": "Official UFACTORY xArm7 ROS2 meshes and kinematics",
+  "packageName": "xarm_description",
+  "packagePath": "/xarm_description",
+  "urdfPath": "/xarm_description/urdf/xarm7.urdf",
+  "rootLink": "link_base",
+  "jointSpecs": [
+    { "name": "joint1", "label": "Joint 1", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.14, "effort": 50 },
+    { "name": "joint2", "label": "Joint 2", "lower": -2.059, "upper": 2.0944, "velocity": 3.14, "effort": 50 },
+    { "name": "joint3", "label": "Joint 3", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.14, "effort": 30 },
+    { "name": "joint4", "label": "Joint 4", "lower": -0.19198, "upper": 3.927, "velocity": 3.14, "effort": 30 },
+    { "name": "joint5", "label": "Joint 5", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.14, "effort": 30 },
+    { "name": "joint6", "label": "Joint 6", "lower": -1.69297, "upper": 3.141592653589793, "velocity": 3.14, "effort": 20 },
+    { "name": "joint7", "label": "Joint 7", "lower": -6.283185307179586, "upper": 6.283185307179586, "velocity": 3.14, "effort": 20 }
+  ],
+  "groups": {
+    "manipulator": {
+      "name": "manipulator",
+      "label": "Manipulator",
+      "jointNames": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"],
+      "defaultFrame": "tool",
+      "supportsIk": true
+    },
+    "arm": {
+      "name": "arm",
+      "label": "Arm",
+      "jointNames": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"],
+      "defaultFrame": "tool",
+      "supportsIk": true
+    }
+  },
+  "defaultGroup": "manipulator",
+  "toolFrames": {
+    "tool": "link_eef"
+  },
+  "defaultToolFrame": "tool",
+  "linkChain": ["link_base", "link1", "link2", "link3", "link4", "link5", "link6", "link7", "link_eef"],
+  "downstreamLinks": {
+    "joint1": ["link1", "link2", "link3", "link4", "link5", "link6", "link7"],
+    "joint2": ["link2", "link3", "link4", "link5", "link6", "link7"],
+    "joint3": ["link3", "link4", "link5", "link6", "link7"],
+    "joint4": ["link4", "link5", "link6", "link7"],
+    "joint5": ["link5", "link6", "link7"],
+    "joint6": ["link6", "link7"],
+    "joint7": ["link7"]
+  },
+  "presets": {
+    "zero": { "joint1": 0, "joint2": 0, "joint3": 0, "joint4": 0, "joint5": 0, "joint6": 0, "joint7": 0 },
+    "ready": { "joint1": 0, "joint2": -0.75, "joint3": 0, "joint4": 1.25, "joint5": 0, "joint6": 0.9, "joint7": 0 },
+    "folded": { "joint1": 0, "joint2": -1.25, "joint3": 0, "joint4": 2.2, "joint5": 0, "joint6": 1.1, "joint7": 0 },
+    "reach": { "joint1": 0.48, "joint2": -0.52, "joint3": 0.25, "joint4": 1.42, "joint5": -0.2, "joint6": 1.18, "joint7": 0.55 }
+  },
+  "actions": {
+    "ready": {
+      "name": "ready",
+      "label": "Ready",
+      "duration": 1.2,
+      "keyframes": [
+        { "time": 0, "joints": { "joint1": 0, "joint2": -1.25, "joint3": 0, "joint4": 2.2, "joint5": 0, "joint6": 1.1, "joint7": 0 } },
+        { "time": 1.2, "joints": { "joint1": 0, "joint2": -0.75, "joint3": 0, "joint4": 1.25, "joint5": 0, "joint6": 0.9, "joint7": 0 } }
+      ]
+    },
+    "reach": {
+      "name": "reach",
+      "label": "Reach",
+      "duration": 1.2,
+      "keyframes": [
+        { "time": 0, "joints": { "joint1": 0, "joint2": -0.75, "joint3": 0, "joint4": 1.25, "joint5": 0, "joint6": 0.9, "joint7": 0 } },
+        { "time": 1.2, "joints": { "joint1": 0.48, "joint2": -0.52, "joint3": 0.25, "joint4": 1.42, "joint5": -0.2, "joint6": 1.18, "joint7": 0.55 } }
+      ]
+    },
+    "wave_preview": {
+      "name": "wave_preview",
+      "label": "Wave Preview",
+      "duration": 3,
+      "loop": true,
+      "keyframes": [
+        { "time": 0, "joints": { "joint1": 0, "joint2": -0.75, "joint3": 0, "joint4": 1.25, "joint5": 0, "joint6": 0.9, "joint7": 0 } },
+        { "time": 0.75, "joints": { "joint1": 0.48, "joint2": -0.52, "joint3": 0.25, "joint4": 1.42, "joint5": -0.2, "joint6": 1.18, "joint7": -0.85 } },
+        { "time": 1.5, "joints": { "joint1": 0.48, "joint2": -0.52, "joint3": 0.25, "joint4": 1.42, "joint5": -0.2, "joint6": 1.18, "joint7": 1.05 } },
+        { "time": 2.25, "joints": { "joint1": 0.48, "joint2": -0.52, "joint3": 0.25, "joint4": 1.42, "joint5": -0.2, "joint6": 1.18, "joint7": -0.55 } },
+        { "time": 3, "joints": { "joint1": 0, "joint2": -0.75, "joint3": 0, "joint4": 1.25, "joint5": 0, "joint6": 0.9, "joint7": 0 } }
+      ]
+    }
+  },
+  "defaultAction": "wave_preview",
+  "capabilities": {
+    "fixedBase": true,
+    "supportsCollision": true,
+    "supportsInertials": true,
+    "supportsGravityTorques": true,
+    "supportsIk": true,
+    "supportsActions": true
+  },
+  "initialTarget": { "x": 0.42, "y": -0.32, "z": 0.48 },
+  "camera": {
+    "position": { "x": 1.35, "y": -1.55, "z": 1.05 },
+    "target": { "x": 0.12, "y": 0, "z": 0.45 }
+  }
+}

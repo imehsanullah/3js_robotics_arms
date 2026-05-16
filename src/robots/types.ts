@@ -70,3 +70,8 @@ export interface RobotDefinition {
     target: { x: number; y: number; z: number };
   };
 }
+
+export interface RobotRegistry {
+  robots: RobotDefinition[];
+  robotById: Record<string, RobotDefinition>;
+}

@@ -30,3 +30,10 @@ The viewer uses upstream robot description packages copied into `public/` with s
 - Browser URDF: `public/xarm_description/urdf/xarm7.urdf`
 
 The generated URDFs keep `package://...` mesh references so `urdf-loader` can resolve meshes through the package map in `src/robots.ts`.
+
+Runtime robot metadata is config-driven:
+
+- Registry index: `public/robots/index.json`
+- Per-robot configs: `public/robots/<robot_id>/robot.json`
+
+Those configs define package paths, URDF paths, joints, groups, frames, presets, actions, capabilities, and collision/inertial metadata used by the TypeScript runtime.

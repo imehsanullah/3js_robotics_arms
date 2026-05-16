@@ -9,12 +9,11 @@ import { solveCcdIk } from './motion/ccdIk';
 import { createJointStateStore } from './motion/jointState';
 import type { OutputMap, SliderMap } from './motion/jointState';
 import {
-  ROBOTS,
-  ROBOT_BY_ID,
   cloneJointValues,
   getDefaultGroup,
   getDefaultPreset,
   getFrameName,
+  loadRobotRegistry,
 } from './robots';
 import type { JointName, JointValues, PoseName, RobotDefinition } from './robots';
 import { collectCollisionMeshes, buildCollisionPairs, detectCollisions, setCollisionVisibility } from './physics/collisions';
@@ -76,7 +75,9 @@ const targetControlMaps: TargetControlMaps = {
   outputs: {} as Record<'x' | 'y' | 'z', HTMLOutputElement>,
 };
 
-let activeRobot: RobotDefinition = ROBOTS[0];
+let robots: RobotDefinition[] = [];
+let robotById: Record<string, RobotDefinition> = {};
+let activeRobot: RobotDefinition;
 let robotModel: URDFRobot | null = null;
 let robotAssetsReady = false;
 let loadToken = 0;
@@ -89,20 +90,34 @@ let inertialLinks: InertialLink[] = [];
 let moveIt: MoveGroupLite | null = null;
 let activeMoveGroup: ReturnType<MoveGroupLite['group']> | null = null;
 
-populateRobotSelector(elements.robotSelector, ROBOTS, activeRobot, robotId => {
-  void loadRobot(robotId);
+void bootstrap().catch(error => {
+  elements.assetState.textContent = 'Robot config failed';
+  elements.readyBadge.textContent = 'Error';
+  console.error(error);
 });
-bindControls();
-renderIcons();
 
-void loadRobot(activeRobot.id);
+async function bootstrap() {
+  elements.assetState.textContent = 'Loading robot configs';
+  const registry = await loadRobotRegistry();
+  robots = registry.robots;
+  robotById = registry.robotById;
+  activeRobot = robots[0];
 
-window.addEventListener('resize', robotScene.resize);
-robotScene.resize();
-robotScene.renderer.setAnimationLoop(render);
+  populateRobotSelector(elements.robotSelector, robots, activeRobot, robotId => {
+    void loadRobot(robotId);
+  });
+  bindControls();
+  renderIcons();
+
+  void loadRobot(activeRobot.id);
+
+  window.addEventListener('resize', robotScene.resize);
+  robotScene.resize();
+  robotScene.renderer.setAnimationLoop(render);
+}
 
 async function loadRobot(robotId: string) {
-  const nextRobot = ROBOT_BY_ID[robotId] ?? ROBOTS[0];
+  const nextRobot = robotById[robotId] ?? robots[0];
   const token = ++loadToken;
 
   activeMoveGroup?.stop();
@@ -133,7 +148,7 @@ async function loadRobot(robotId: string) {
   updateVisibility();
 
   const manager = new THREE.LoadingManager();
-  const loader = createUrdfLoader(manager, ROBOTS);
+  const loader = createUrdfLoader(manager, robots);
 
   manager.onLoad = () => {
     if (token !== loadToken || !robotModel) {

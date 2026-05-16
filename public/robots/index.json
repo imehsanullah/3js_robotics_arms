@@ -1,0 +1,7 @@
+{
+  "robots": [
+    "/robots/ur5e/robot.json",
+    "/robots/panda/robot.json",
+    "/robots/xarm7/robot.json"
+  ]
+}

@@ -1,53 +1,7 @@
-import type {
-  JointName,
-  JointSpec,
-  JointValues,
-  RobotActionDefinition,
-  RobotDefinition,
-  RobotGroupDefinition,
-} from './types';
+import type { JointValues, RobotDefinition } from './types';
 
 export const DEG2RAD = Math.PI / 180;
 export const RAD2DEG = 180 / Math.PI;
-export const TAU = Math.PI * 2;
-
-export function joint(name: string, label: string, lower: number, upper: number, velocity: number, effort: number): JointSpec {
-  return { name, label, lower, upper, velocity, effort };
-}
-
-export function values(jointSpecs: JointSpec[], jointValues: number[]) {
-  return Object.fromEntries(jointSpecs.map((spec, index) => [spec.name, jointValues[index] ?? 0])) as JointValues;
-}
-
-export function group(name: string, label: string, jointSpecs: JointSpec[], defaultFrame?: string): RobotGroupDefinition {
-  return {
-    name,
-    label,
-    jointNames: jointSpecs.map(spec => spec.name),
-    defaultFrame,
-    supportsIk: Boolean(defaultFrame),
-  };
-}
-
-export function action(
-  name: string,
-  label: string,
-  duration: number,
-  keyframes: Array<{ time: number; joints: Partial<JointValues> }>,
-  loop = false,
-): RobotActionDefinition {
-  return { name, label, duration, keyframes, loop };
-}
-
-export function downstream(pairs: [string, string[]][]) {
-  return Object.fromEntries(pairs) as Record<string, string[]>;
-}
-
-export function serialDownstream(jointSpecs: JointSpec[], childLinks: string[]) {
-  return Object.fromEntries(
-    jointSpecs.map((spec, index) => [spec.name, childLinks.slice(index)]),
-  ) as Record<JointName, string[]>;
-}
 
 export function getDefaultPreset(robot: RobotDefinition) {
   return robot.presets.ready ?? robot.presets.zero;

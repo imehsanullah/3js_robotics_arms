@@ -23,7 +23,7 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Keyframe action playback for preview motions such as `wave_preview`.
 - Collision checking between non-adjacent official collision meshes using BVH mesh intersection.
 - Inertial mass properties, per-link center of mass markers, total center of mass, and gravity torque estimates per joint.
-- Robot definitions live under `src/robots/definitions/` and describe groups, frames, capabilities, presets, and actions.
+- Robot definitions are loaded from JSON configs under `public/robots/` and describe groups, frames, capabilities, presets, and actions.
 - A `SimulationBackend` interface is in place so a real physics backend can be added later without replacing the UI/control layer.
 
 ## Browser Move Group API
@@ -69,7 +69,8 @@ Actions are kinematic previews, not dynamic simulations.
 ## Code Structure
 
 - `src/main.ts`: app orchestration only.
-- `src/robots/`: generic robot types, registry, and per-robot definitions.
+- `public/robots/`: robot registry index and per-robot JSON configs.
+- `src/robots/`: generic robot types, config loading, validation, normalization, and helpers.
 - `src/rendering/`: scene setup, URDF loading, materials, overlays, disposal.
 - `src/physics/`: collision collection/checks, inertials/COM, gravity torque readouts.
 - `src/motion/`: joint state, CCD IK, and keyframe action playback.
@@ -80,9 +81,9 @@ Actions are kinematic previews, not dynamic simulations.
 
 1. Copy the upstream robot description assets into `public/<package_name>`.
 2. Generate a static URDF that keeps `package://<package_name>/...` mesh references.
-3. Add a `RobotDefinition` file under `src/robots/definitions/` with joint specs, groups, frame aliases, presets, actions, capabilities, collision link chain, downstream link map, and camera defaults.
-4. Export the definition from `src/robots/registry.ts`.
-5. The selector, controls, action playback, physics overlays, and `MoveGroupLite` groups are built from that definition automatically.
+3. Add `public/robots/<robot_id>/robot.json` with joint specs, groups, frame aliases, presets, actions, capabilities, collision link chain, downstream link map, and camera defaults.
+4. Add that config path to `public/robots/index.json`.
+5. The selector, controls, action playback, physics overlays, and `MoveGroupLite` groups are built from that config automatically.
 
 ## Asset Source
 
