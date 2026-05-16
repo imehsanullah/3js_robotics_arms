@@ -1,0 +1,26 @@
+{
+  "name": "threejs-robotics-arms",
+  "version": "1.0.0",
+  "description": "Three.js robot arm viewer using official URDF assets, robot-specific kinematics, collision meshes, and robotics physics overlays.",
+  "type": "module",
+  "private": true,
+  "license": "BSD-3-Clause",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "npm run build"
+  },
+  "dependencies": {
+    "lucide": "^1.16.0",
+    "three": "^0.184.0",
+    "three-mesh-bvh": "^0.9.10",
+    "urdf-loader": "^0.12.7"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.1",
+    "playwright": "^1.60.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13"
+  }
+}
