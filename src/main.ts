@@ -43,6 +43,7 @@ import { createRobotMaterials } from './rendering/materials';
 import { createRobotOverlays } from './rendering/overlays';
 import { configureRobotMaterials, countUrdfVisuals, getRobotFrame, loadUrdfWithAssets } from './rendering/robotLoader';
 import { createRobotScene } from './rendering/scene';
+import { installTargetDrag } from './rendering/targetDrag';
 import { KinematicBackend } from './simulation/kinematicBackend';
 import { updatePlayIcon, renderIcons } from './ui/icons';
 import { buildJointControls } from './ui/jointControls';
@@ -102,6 +103,20 @@ const targetControlMaps: TargetControlMaps = {
   inputs: {} as Record<'x' | 'y' | 'z', HTMLInputElement>,
   outputs: {} as Record<'x' | 'y' | 'z', HTMLOutputElement>,
 };
+
+installTargetDrag({
+  canvas: elements.canvas,
+  camera: robotScene.camera,
+  controls: robotScene.controls,
+  targetMesh: overlays.targetMesh,
+  targetPosition: overlays.targetPosition,
+  targetControls: targetControlMaps,
+  onDragStart: () => {
+    actionPlayer.stop();
+    updatePlayIcon(false);
+    activeMoveGroup?.stop();
+  },
+});
 
 let robots: RobotDefinition[] = [];
 let robotById: Record<string, RobotDefinition> = {};

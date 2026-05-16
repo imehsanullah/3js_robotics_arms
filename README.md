@@ -20,6 +20,7 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Revolute joint hierarchy, limits, effort limits, and max-velocity constrained motion.
 - Forward kinematics with live tool-frame or gripper TCP pose.
 - CCD inverse kinematics for a movable tool target.
+- Mouse-draggable pose target in the 3D viewport.
 - Browser-only `MoveGroupLite` API for named targets, joint targets, pose targets, planning, execution, and stop.
 - Keyframe action playback for preview motions such as `wave_preview`.
 - Collision checking between non-adjacent official collision meshes using BVH mesh intersection.

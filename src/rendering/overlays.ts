@@ -14,6 +14,11 @@ export interface RobotOverlays {
 export function createRobotOverlays(scene: THREE.Scene, materials: RobotMaterials): RobotOverlays {
   const targetPosition = new THREE.Vector3();
   const targetMesh = new THREE.Mesh(new THREE.SphereGeometry(0.025, 24, 16), materials.target);
+  const targetHitMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12, 16, 12),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  );
+  targetMesh.add(targetHitMesh);
   const toolFrame = new THREE.AxesHelper(0.12);
   const totalComMesh = new THREE.Mesh(new THREE.SphereGeometry(0.025, 24, 16), materials.totalCom);
   const toolToTargetLine = new THREE.Line(
