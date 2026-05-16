@@ -16,8 +16,9 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Robot picker for UR5e, Panda / FP3, and xArm7.
 - Static browser-ready URDFs generated from upstream ROS xacro/config data.
 - Official visual and collision meshes copied under `public/`.
+- Config-driven Robotiq 2F-85 gripper mounting using the upstream ROS2 description, mimic-joint close kinematics, and optional gripper-object contact preview.
 - Revolute joint hierarchy, limits, effort limits, and max-velocity constrained motion.
-- Forward kinematics with live tool-frame pose.
+- Forward kinematics with live tool-frame or gripper TCP pose.
 - CCD inverse kinematics for a movable tool target.
 - Browser-only `MoveGroupLite` API for named targets, joint targets, pose targets, planning, execution, and stop.
 - Keyframe action playback for preview motions such as `wave_preview`.
@@ -56,6 +57,24 @@ arm.stop();
 
 The browser implementation is intentionally MoveIt-like, not full MoveIt. It uses joint-space interpolation, the existing CCD IK for pose targets, velocity limits, and optional mesh collision checks.
 
+## Browser Gripper API
+
+The active end effector is exposed separately from the arm move group:
+
+```js
+window.gripper.close();
+window.gripper.open();
+window.gripper.set(0.4);
+window.gripper.get();
+window.gripper.getOpening();
+window.gripper.getMotionMode();
+window.gripper.setMotionMode('adaptive-linkage');
+window.gripper.setMotionMode('parallel-pinch');
+window.gripper.setContactEnabled(true);
+```
+
+The current Robotiq configs default to the upstream adaptive-linkage mimic joints from `robotiq_description`, while the readout reports the estimated jaw gap. Enable contact preview from code when you want `close()` to stop at the configured object width and report contact. For pose targets, `MoveGroupLite` uses the gripper TCP when a gripper is mounted, so `setPoseTarget()` moves the grasp point rather than the bare arm flange.
+
 ## Browser Action API
 
 Robot definitions can expose named keyframe actions. The current app plays the robot's `defaultAction` from the play button, and actions can also be sampled from code:
@@ -70,6 +89,7 @@ Actions are kinematic previews, not dynamic simulations.
 ## Code Structure
 
 - `src/main.ts`: app orchestration only.
+- `src/endEffectors/`: configurable end-effector controls and runtime state.
 - `public/robots/`: robot registry index and per-robot JSON configs.
 - `src/robots/`: generic robot types, config loading, validation, normalization, and helpers.
 - `src/rendering/`: scene setup, URDF loading, materials, overlays, disposal.
@@ -83,8 +103,9 @@ Actions are kinematic previews, not dynamic simulations.
 1. Copy the upstream robot description assets into `public/<package_name>` and preserve the upstream license.
 2. Generate a static URDF that keeps `package://<package_name>/...` mesh references.
 3. Add `public/robots/<robot_id>/robot.json` with joint specs, groups, frame aliases, presets, actions, capabilities, collision metadata, downstream link map, and camera defaults.
-4. Add that config path to `public/robots/index.json`.
-5. The selector, controls, action playback, physics overlays, and `MoveGroupLite` groups are built from that config automatically.
+4. Optionally add `endEffectors` entries that point to browser-ready end-effector URDF packages and define mount frames, TCP offsets, command joints, and parallel-grip contact previews.
+5. Add that config path to `public/robots/index.json`.
+6. The selector, controls, action playback, physics overlays, gripper controls, and `MoveGroupLite` groups are built from that config automatically.
 
 ## Asset Source
 

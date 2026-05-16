@@ -98,6 +98,8 @@ export function setCollisionVisibility(collisionMeshes: CollisionMesh[], visible
     }
     if (object) {
       object.visible = visible;
+    } else {
+      item.mesh.visible = visible;
     }
   }
 }

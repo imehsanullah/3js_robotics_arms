@@ -8,9 +8,16 @@ interface UrdfVisualLike {
   isURDFVisual?: boolean;
 }
 
-export function createUrdfLoader(manager: THREE.LoadingManager, robots: RobotDefinition[]) {
+export function createUrdfLoader(
+  manager: THREE.LoadingManager,
+  robots: RobotDefinition[],
+  extraPackages: Record<string, string> = {},
+) {
   const loader = new URDFLoader(manager);
-  loader.packages = Object.fromEntries(robots.map(robotDefinition => [robotDefinition.packageName, robotDefinition.packagePath]));
+  loader.packages = {
+    ...Object.fromEntries(robots.map(robotDefinition => [robotDefinition.packageName, robotDefinition.packagePath])),
+    ...extraPackages,
+  };
   loader.parseCollision = true;
   loader.parseVisual = true;
 
@@ -30,6 +37,41 @@ export function createUrdfLoader(manager: THREE.LoadingManager, robots: RobotDef
   };
 
   return loader;
+}
+
+export function loadUrdfWithAssets(
+  urdfPath: string,
+  robots: RobotDefinition[],
+  extraPackages: Record<string, string> = {},
+) {
+  return new Promise<URDFRobot>((resolve, reject) => {
+    const manager = new THREE.LoadingManager();
+    const loader = createUrdfLoader(manager, robots, extraPackages);
+    let loadedModel: URDFRobot | null = null;
+    let loadError: Error | null = null;
+
+    manager.onLoad = () => {
+      if (loadedModel && !loadError) {
+        resolve(loadedModel);
+      }
+    };
+    manager.onError = url => {
+      loadError = new Error(`Failed to load URDF asset: ${url}`);
+      reject(loadError);
+    };
+
+    loader.load(
+      urdfPath,
+      model => {
+        loadedModel = model;
+      },
+      undefined,
+      error => {
+        loadError = error instanceof Error ? error : new Error(String(error));
+        reject(loadError);
+      },
+    );
+  });
 }
 
 export function configureRobotMaterials(

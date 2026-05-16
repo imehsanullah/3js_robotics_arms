@@ -193,6 +193,7 @@ output,
 }
 
 .joint-controls,
+.gripper-controls,
 .target-controls,
 .move-group-controls,
 .torque-readout,
@@ -208,6 +209,16 @@ output,
 .move-group-controls .text-button {
   min-width: 0;
   width: 100%;
+}
+
+.gripper-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.gripper-actions .text-button {
+  min-width: 0;
 }
 
 .joint-row {
@@ -318,6 +329,7 @@ input[type='checkbox'] {
 
 .status-pill,
 #motion-state,
+#gripper-state,
 #move-group-state {
   padding: 4px 9px;
   border-radius: 999px;

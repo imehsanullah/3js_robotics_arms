@@ -12,6 +12,8 @@ export interface AppElements {
   brandName: HTMLSpanElement;
   brandSubtitle: HTMLElement;
   jointControls: HTMLDivElement;
+  gripperControls: HTMLDivElement;
+  gripperState: HTMLOutputElement;
   torqueReadout: HTMLDivElement;
   collisionReadout: HTMLDivElement;
   assetState: HTMLSpanElement;
@@ -40,6 +42,8 @@ export function queryAppElements(): AppElements {
     brandName: queryRequired<HTMLSpanElement>('#brand-name'),
     brandSubtitle: queryRequired<HTMLElement>('#brand-subtitle'),
     jointControls: queryRequired<HTMLDivElement>('#joint-controls'),
+    gripperControls: queryRequired<HTMLDivElement>('#gripper-controls'),
+    gripperState: queryRequired<HTMLOutputElement>('#gripper-state'),
     torqueReadout: queryRequired<HTMLDivElement>('#torque-readout'),
     collisionReadout: queryRequired<HTMLDivElement>('#collision-readout'),
     assetState: queryRequired<HTMLSpanElement>('#asset-state'),

@@ -3,6 +3,8 @@ import {
   Camera,
   CircleStop,
   Crosshair,
+  FoldHorizontal,
+  Grip,
   Home,
   Layers,
   Pause,
@@ -11,6 +13,7 @@ import {
   RotateCcw,
   Send,
   Target,
+  UnfoldHorizontal,
   createIcons,
 } from 'lucide';
 
@@ -19,6 +22,8 @@ const icons = {
   Camera,
   CircleStop,
   Crosshair,
+  FoldHorizontal,
+  Grip,
   Home,
   Layers,
   Play,
@@ -27,6 +32,7 @@ const icons = {
   RotateCcw,
   Send,
   Target,
+  UnfoldHorizontal,
 };
 
 export function renderIcons() {

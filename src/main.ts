@@ -4,6 +4,23 @@ import * as THREE from 'three';
 import type { URDFRobot } from 'urdf-loader';
 import { queryAppElements } from './app/dom';
 import { CartesianPoseTarget, MoveGroupLite, MoveGroupStatus } from './moveGroupLite';
+import { buildEndEffectorControls } from './endEffectors/controls';
+import type { EndEffectorControlHandles } from './endEffectors/controls';
+import {
+  collectParallelGripCollisionMeshes,
+  createParallelGripContact,
+  setParallelGripCollisionVisibility,
+} from './endEffectors/contact';
+import {
+  applyEndEffectorStep,
+  createEndEffectorRuntime,
+  formatEndEffectorRuntimeState,
+  getEndEffectorOpening,
+  setEndEffectorContactPreview,
+  setEndEffectorMotionMode,
+  setEndEffectorTarget,
+} from './endEffectors/state';
+import type { EndEffectorRuntime } from './endEffectors/state';
 import { ActionPlayer } from './motion/actionPlayer';
 import { solveCcdIk } from './motion/ccdIk';
 import { createJointStateStore } from './motion/jointState';
@@ -15,7 +32,7 @@ import {
   getFrameName,
   loadRobotRegistry,
 } from './robots';
-import type { JointName, JointValues, PoseName, RobotDefinition } from './robots';
+import type { EndEffectorGripMotionMode, JointName, JointValues, PoseName, RobotDefinition } from './robots';
 import { collectCollisionMeshes, buildCollisionPairs, detectCollisions, setCollisionVisibility } from './physics/collisions';
 import { computeGravityTorques } from './physics/gravityTorques';
 import { collectInertialLinks, setInertialVisibility, updateCenterOfMass } from './physics/inertials';
@@ -24,7 +41,7 @@ import { installBvhExtensions } from './rendering/bvh';
 import { disposeObjectTree } from './rendering/dispose';
 import { createRobotMaterials } from './rendering/materials';
 import { createRobotOverlays } from './rendering/overlays';
-import { configureRobotMaterials, countUrdfVisuals, createUrdfLoader, getRobotFrame } from './rendering/robotLoader';
+import { configureRobotMaterials, countUrdfVisuals, getRobotFrame, loadUrdfWithAssets } from './rendering/robotLoader';
 import { createRobotScene } from './rendering/scene';
 import { KinematicBackend } from './simulation/kinematicBackend';
 import { updatePlayIcon, renderIcons } from './ui/icons';
@@ -46,6 +63,16 @@ declare global {
     moveIt?: MoveGroupLite;
     robotMoveGroup?: ReturnType<MoveGroupLite['group']>;
     ur5eMoveGroup?: ReturnType<MoveGroupLite['group']>;
+    gripper?: {
+      open(): void;
+      close(): void;
+      set(value: number): void;
+      get(): number | null;
+      getOpening(): number | null;
+      getMotionMode(): EndEffectorGripMotionMode | null;
+      setMotionMode(mode: EndEffectorGripMotionMode): void;
+      setContactEnabled(enabled: boolean, showObject?: boolean): void;
+    };
   }
 }
 
@@ -65,6 +92,7 @@ const protectedMaterials = new Set<THREE.Material>([
   materials.target,
   materials.com,
   materials.totalCom,
+  materials.graspObject,
 ]);
 
 const jointSliders: SliderMap = {};
@@ -85,10 +113,14 @@ let speedScale = Number(elements.speedScaleInput.value);
 let totalMass = 0;
 let visualCount = 0;
 let collisionMeshes: CollisionMesh[] = [];
+let endEffectorCollisionMeshes: CollisionMesh[] = [];
+let parallelEndEffectorCollisionMeshes: CollisionMesh[] = [];
 let collisionPairSet = new Set<string>();
 let inertialLinks: InertialLink[] = [];
 let moveIt: MoveGroupLite | null = null;
 let activeMoveGroup: ReturnType<MoveGroupLite['group']> | null = null;
+let activeEndEffectorRuntime: EndEffectorRuntime | null = null;
+let endEffectorControlHandles: EndEffectorControlHandles = { slider: null, output: null };
 
 void bootstrap().catch(error => {
   elements.assetState.textContent = 'Robot config failed';
@@ -132,6 +164,8 @@ async function loadRobot(robotId: string) {
   visualCount = 0;
   totalMass = 0;
   collisionMeshes = [];
+  endEffectorCollisionMeshes = [];
+  parallelEndEffectorCollisionMeshes = [];
   inertialLinks = [];
   collisionPairSet = new Set<string>();
 
@@ -147,19 +181,38 @@ async function loadRobot(robotId: string) {
   resetRobotReadouts(elements);
   updateVisibility();
 
-  const manager = new THREE.LoadingManager();
-  const loader = createUrdfLoader(manager, robots);
+  try {
+    const loadedRobot = await loadUrdfWithAssets(activeRobot.urdfPath, robots);
+    if (token !== loadToken) {
+      disposeObjectTree(loadedRobot, protectedMaterials);
+      return;
+    }
 
-  manager.onLoad = () => {
+    robotModel = loadedRobot;
+    robotModel.name = activeRobot.name;
+    robotScene.scene.add(robotModel);
+    backend.attachModel(robotModel);
+    applyJointState(true);
+    configureRobotMaterials(robotModel, materials, elements.collisionToggle.checked);
+    elements.assetState.textContent = 'Arm loaded';
+
+    await loadActiveEndEffector(token);
     if (token !== loadToken || !robotModel) {
       return;
     }
 
     configureRobotMaterials(robotModel, materials, elements.collisionToggle.checked);
     robotAssetsReady = true;
-    collisionMeshes = activeRobot.capabilities.supportsCollision
+    const allCollisionMeshes = activeRobot.capabilities.supportsCollision
       ? collectCollisionMeshes(robotModel, materials.collision)
       : [];
+    const endEffectorLinkNames = getEndEffectorLinkNames();
+    collisionMeshes = allCollisionMeshes.filter(item => !endEffectorLinkNames.has(item.linkName));
+    endEffectorCollisionMeshes = allCollisionMeshes.filter(item => endEffectorLinkNames.has(item.linkName));
+    parallelEndEffectorCollisionMeshes = collectParallelGripCollisionMeshes(
+      activeEndEffectorRuntime?.parallelVisual ?? null,
+      materials.collision,
+    );
     inertialLinks = activeRobot.capabilities.supportsInertials
       ? collectInertialLinks(robotModel, robotScene.scene, materials.com, elements.comToggle.checked).inertialLinks
       : [];
@@ -167,39 +220,32 @@ async function loadRobot(robotId: string) {
     collisionPairSet = buildCollisionPairs(activeRobot, collisionMeshes);
     visualCount = countUrdfVisuals(robotModel);
 
-    markRobotReady(elements, activeRobot, visualCount, collisionMeshes.length, totalMass);
+    markRobotReady(
+      elements,
+      activeRobot,
+      visualCount,
+      collisionMeshes.length + endEffectorCollisionMeshes.length + parallelEndEffectorCollisionMeshes.length,
+      totalMass,
+    );
     applyJointState(true);
+    applyEndEffectorRuntime(true);
     updateVisibility();
     updateMoveGroupStatus({ groupName: activeRobot.defaultGroup, state: 'idle', message: 'Ready' });
-  };
-
-  loader.load(
-    activeRobot.urdfPath,
-    loadedRobot => {
-      if (token !== loadToken) {
-        disposeObjectTree(loadedRobot, protectedMaterials);
-        return;
-      }
-      robotModel = loadedRobot;
-      robotModel.name = activeRobot.name;
-      robotScene.scene.add(robotModel);
-      backend.attachModel(robotModel);
-      applyJointState(true);
-      configureRobotMaterials(robotModel, materials, elements.collisionToggle.checked);
-      elements.assetState.textContent = 'URDF loaded';
-    },
-    undefined,
-    error => {
-      if (token !== loadToken) {
-        return;
-      }
-      markRobotLoadFailed(elements);
-      console.error(error);
-    },
-  );
+  } catch (error) {
+    if (token !== loadToken) {
+      return;
+    }
+    markRobotLoadFailed(elements);
+    console.error(error);
+  }
 }
 
 function disposeLoadedRobot() {
+  activeEndEffectorRuntime = null;
+  endEffectorCollisionMeshes = [];
+  parallelEndEffectorCollisionMeshes = [];
+  window.gripper = undefined;
+
   if (robotModel) {
     robotScene.scene.remove(robotModel);
     disposeObjectTree(robotModel, protectedMaterials);
@@ -213,6 +259,8 @@ function disposeLoadedRobot() {
 
   backend.attachModel(null);
   collisionMeshes = [];
+  endEffectorCollisionMeshes = [];
+  parallelEndEffectorCollisionMeshes = [];
   inertialLinks = [];
   collisionPairSet.clear();
 }
@@ -231,6 +279,7 @@ function rebuildControls() {
     },
   );
   buildTargetControls(elements.targetControls, overlays.targetPosition, overlays.targetMesh, targetControlMaps);
+  updateEndEffectorControls();
 }
 
 function setupMoveGroup() {
@@ -358,7 +407,7 @@ function getCurrentPose() {
 }
 
 function getToolFrameObject() {
-  return getRobotFrame(robotModel, getFrameName(activeRobot));
+  return activeEndEffectorRuntime?.tcpFrame ?? getRobotFrame(robotModel, getFrameName(activeRobot));
 }
 
 function setPoseTargetVisual(pose: CartesianPoseTarget) {
@@ -411,7 +460,8 @@ function solveIkForPose(pose: CartesianPoseTarget, seed: JointValues) {
   return solveCcdIk({
     robot: activeRobot,
     model: robotModel,
-    toolFrameName: getFrameName(activeRobot),
+    toolFrameName: activeEndEffectorRuntime?.tcpFrame.name ?? getFrameName(activeRobot),
+    toolFrameObject: getToolFrameObject(),
     pose,
     seed,
     getCurrentJointValues: () => jointState.getCurrent(activeRobot),
@@ -440,6 +490,7 @@ function render() {
   }
 
   applyJointState(false, delta);
+  applyEndEffectorRuntime(false, delta);
   robotScene.controls.update();
   updatePhysicsReadouts();
   robotScene.renderer.render(robotScene.scene, robotScene.camera);
@@ -491,7 +542,7 @@ function updatePhysicsReadouts() {
   updatePhysicsReadoutText({
     elements,
     robot: activeRobot,
-    toolFrameName: getFrameName(activeRobot),
+    toolFrameName: activeEndEffectorRuntime ? `${activeEndEffectorRuntime.definition.shortName} TCP` : getFrameName(activeRobot),
     toolPosition,
     toolQuaternion,
     totalCom,
@@ -504,11 +555,203 @@ function detectActiveCollisions() {
   if (!activeRobot.capabilities.supportsCollision) {
     return [];
   }
-  return detectCollisions(collisionMeshes, collisionPairSet, materials.collision, materials.collisionHit);
+  const endEffectorMeshes = getActiveEndEffectorCollisionMeshes();
+  const activeCollisionMeshes = [...collisionMeshes, ...endEffectorMeshes];
+  const activeCollisionPairSet = buildActiveCollisionPairSet(activeCollisionMeshes.length);
+  return detectCollisions(activeCollisionMeshes, activeCollisionPairSet, materials.collision, materials.collisionHit);
 }
 
 function updateVisibility() {
   setCollisionVisibility(collisionMeshes, elements.collisionToggle.checked);
+  setCollisionVisibility(endEffectorCollisionMeshes, elements.collisionToggle.checked);
+  setCollisionVisibility(parallelEndEffectorCollisionMeshes, shouldShowParallelEndEffectorCollisionOverlay());
+  setParallelGripCollisionVisibility(
+    activeEndEffectorRuntime?.parallelVisual ?? null,
+    shouldShowParallelEndEffectorCollisionOverlay(),
+  );
   setInertialVisibility(inertialLinks, overlays.totalComMesh, elements.comToggle.checked);
   overlays.setFrameVisibility(elements.framesToggle.checked);
+}
+
+function shouldShowParallelEndEffectorCollisionOverlay() {
+  if (!elements.collisionToggle.checked) {
+    return false;
+  }
+
+  return activeEndEffectorRuntime?.motionMode === 'parallel-pinch' && Boolean(activeEndEffectorRuntime.parallelVisual);
+}
+
+function getActiveEndEffectorCollisionMeshes() {
+  const runtime = activeEndEffectorRuntime;
+  if (!runtime) {
+    return [];
+  }
+
+  const rootLinkName = runtime.definition.rootLink;
+  const activeEndEffectorMeshes = endEffectorCollisionMeshes.filter(item => (
+    item.linkName !== rootLinkName &&
+    item.linkName !== 'world'
+  ));
+
+  if (runtime.motionMode !== 'parallel-pinch' || !runtime.parallelVisual) {
+    return activeEndEffectorMeshes;
+  }
+
+  const hiddenSourceLinkNames = runtime.parallelVisual.sourceLinkNames;
+  return [
+    ...activeEndEffectorMeshes.filter(item => !hiddenSourceLinkNames.has(item.linkName)),
+    ...parallelEndEffectorCollisionMeshes,
+  ];
+}
+
+function buildActiveCollisionPairSet(activeCollisionMeshCount: number) {
+  const activeCollisionPairSet = new Set(collisionPairSet);
+  for (let armIndex = 0; armIndex < collisionMeshes.length; armIndex += 1) {
+    for (let endEffectorIndex = collisionMeshes.length; endEffectorIndex < activeCollisionMeshCount; endEffectorIndex += 1) {
+      activeCollisionPairSet.add(`${armIndex}:${endEffectorIndex}`);
+    }
+  }
+  return activeCollisionPairSet;
+}
+
+async function loadActiveEndEffector(token: number) {
+  const definition = activeRobot.endEffectors[0] ?? null;
+  activeEndEffectorRuntime = null;
+  endEffectorCollisionMeshes = [];
+  parallelEndEffectorCollisionMeshes = [];
+  window.gripper = undefined;
+  updateEndEffectorControls();
+
+  if (!definition) {
+    elements.gripperState.textContent = 'None';
+    return;
+  }
+
+  elements.gripperState.textContent = 'Loading';
+  const gripperModel = await loadUrdfWithAssets(definition.urdfPath, robots, {
+    [definition.packageName]: definition.packagePath,
+  });
+  if (token !== loadToken || !robotModel) {
+    disposeObjectTree(gripperModel, protectedMaterials);
+    return;
+  }
+
+  const mountFrameName = getFrameName(activeRobot, definition.mountFrame);
+  const mountFrame = getRobotFrame(robotModel, mountFrameName);
+  if (!mountFrame) {
+    disposeObjectTree(gripperModel, protectedMaterials);
+    elements.gripperState.textContent = 'Mount missing';
+    updateEndEffectorControls();
+    return;
+  }
+
+  gripperModel.name = definition.name;
+  gripperModel.position.set(definition.origin.position.x, definition.origin.position.y, definition.origin.position.z);
+  gripperModel.rotation.set(definition.origin.rpy.x, definition.origin.rpy.y, definition.origin.rpy.z, 'XYZ');
+  mountFrame.add(gripperModel);
+
+  const contact = createParallelGripContact(definition, materials.graspObject);
+  if (contact) {
+    gripperModel.add(contact.object);
+  }
+
+  activeEndEffectorRuntime = createEndEffectorRuntime(definition, gripperModel, contact);
+  configureRobotMaterials(gripperModel, materials, elements.collisionToggle.checked);
+  setEndEffectorTarget(activeEndEffectorRuntime, definition.command.open);
+  applyEndEffectorRuntime(true);
+  installEndEffectorApi();
+  updateEndEffectorControls();
+}
+
+function updateEndEffectorControls() {
+  const definition = activeEndEffectorRuntime?.definition ?? activeRobot?.endEffectors[0] ?? null;
+  const value = activeEndEffectorRuntime?.target ?? definition?.command.open ?? 0;
+  endEffectorControlHandles = buildEndEffectorControls(
+    elements.gripperControls,
+    definition,
+    value,
+    value => setEndEffectorCommand(value),
+  );
+  renderIcons();
+  updateEndEffectorReadout();
+}
+
+function setEndEffectorCommand(value: number) {
+  if (!activeEndEffectorRuntime) {
+    return;
+  }
+  setEndEffectorTarget(activeEndEffectorRuntime, value);
+  updateEndEffectorReadout();
+}
+
+function applyEndEffectorRuntime(force: boolean, delta = 1 / 60) {
+  if (!activeEndEffectorRuntime) {
+    return false;
+  }
+  const moving = applyEndEffectorStep(activeEndEffectorRuntime, speedScale, delta, force);
+  if (force || moving) {
+    updateEndEffectorReadout();
+  }
+  return moving;
+}
+
+function updateEndEffectorReadout() {
+  if (!activeEndEffectorRuntime) {
+    if (!activeRobot?.endEffectors[0]) {
+      elements.gripperState.textContent = 'None';
+    }
+    return;
+  }
+
+  const { current } = activeEndEffectorRuntime;
+  const label = formatEndEffectorRuntimeState(activeEndEffectorRuntime);
+  elements.gripperState.textContent = label;
+  if (endEffectorControlHandles.slider) {
+    endEffectorControlHandles.slider.value = String(current);
+  }
+  if (endEffectorControlHandles.output) {
+    endEffectorControlHandles.output.textContent = label;
+  }
+}
+
+function installEndEffectorApi() {
+  if (!activeEndEffectorRuntime) {
+    window.gripper = undefined;
+    return;
+  }
+
+  window.gripper = {
+    open: () => setEndEffectorCommand(activeEndEffectorRuntime?.definition.command.open ?? 0),
+    close: () => setEndEffectorCommand(activeEndEffectorRuntime?.definition.command.close ?? 0),
+    set: value => setEndEffectorCommand(value),
+    get: () => activeEndEffectorRuntime?.current ?? null,
+    getOpening: () => (activeEndEffectorRuntime ? getEndEffectorOpening(activeEndEffectorRuntime) : null),
+    getMotionMode: () => activeEndEffectorRuntime?.motionMode ?? null,
+    setMotionMode: mode => {
+      if (!activeEndEffectorRuntime) {
+        return;
+      }
+      setEndEffectorMotionMode(activeEndEffectorRuntime, mode);
+      updateVisibility();
+      updateEndEffectorReadout();
+    },
+    setContactEnabled: (enabled, showObject = enabled) => {
+      if (activeEndEffectorRuntime) {
+        setEndEffectorContactPreview(activeEndEffectorRuntime, enabled, showObject);
+        updateEndEffectorReadout();
+      }
+    },
+  };
+}
+
+function getEndEffectorLinkNames() {
+  const linkNames = new Set<string>();
+  if (!activeEndEffectorRuntime) {
+    return linkNames;
+  }
+
+  for (const linkName of Object.keys(activeEndEffectorRuntime.model.links)) {
+    linkNames.add(linkName);
+  }
+  return linkNames;
 }

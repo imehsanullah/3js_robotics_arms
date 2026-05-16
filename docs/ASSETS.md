@@ -29,11 +29,21 @@ The viewer uses upstream robot description packages copied into `public/` with s
 - Local copy: `public/xarm_description`
 - Browser URDF: `public/xarm_description/urdf/xarm7.urdf`
 
-The generated URDFs keep `package://...` mesh references so `urdf-loader` can resolve meshes through the package map in `src/robots.ts`.
+## Robotiq 2F-85 Gripper
+
+- Source package: `robotiq_description` from `RoboticManipulation/ros2_robotiq_gripper`, branch `humble-test-setup`
+- Visual meshes: `meshes/visual/*.dae`
+- Collision meshes: `meshes/collision/*.stl`
+- Kinematics, mimic joints, limits, inertials, and contact/friction metadata: `urdf/robotiq_gripper_macro.urdf.xacro`
+- Local copy: `public/robotiq_description`
+- Browser URDF: `public/robotiq_description/urdf/robotiq_gripper.urdf`
+- License: BSD license copied to `public/robotiq_description/LICENSE`
+
+The generated URDFs keep `package://...` mesh references so `urdf-loader` can resolve meshes through the package map in `src/rendering/robotLoader.ts`.
 
 Runtime robot metadata is config-driven:
 
 - Registry index: `public/robots/index.json`
 - Per-robot configs: `public/robots/<robot_id>/robot.json`
 
-Those configs define package paths, URDF paths, joints, groups, frames, presets, actions, capabilities, and collision/inertial metadata used by the TypeScript runtime.
+Those configs define package paths, URDF paths, joints, groups, frames, presets, actions, end-effectors, capabilities, and collision/inertial metadata used by the TypeScript runtime.

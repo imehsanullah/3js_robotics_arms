@@ -9,6 +9,7 @@ export interface CcdIkOptions {
   robot: RobotDefinition;
   model: URDFRobot | null;
   toolFrameName: string;
+  toolFrameObject?: THREE.Object3D | null;
   pose: CartesianPoseTarget;
   seed: JointValues;
   getCurrentJointValues: () => JointValues;
@@ -35,6 +36,7 @@ export function solveCcdIk(options: CcdIkOptions): IkResult {
     options.robot,
     options.model,
     options.toolFrameName,
+    options.toolFrameObject ?? null,
     requestedTarget,
     solution,
   );
@@ -46,10 +48,11 @@ function solveCcdPositionTarget(
   robotDefinition: RobotDefinition,
   model: URDFRobot,
   toolFrameName: string,
+  toolFrameObject: THREE.Object3D | null,
   requestedTarget: THREE.Vector3,
   solution: JointValues,
 ): IkResult {
-  const tool = getRobotFrame(model, toolFrameName);
+  const tool = toolFrameObject ?? getRobotFrame(model, toolFrameName);
   if (!tool) {
     return {
       success: false,

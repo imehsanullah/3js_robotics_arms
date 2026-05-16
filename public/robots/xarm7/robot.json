@@ -37,6 +37,52 @@
     "tool": "link_eef"
   },
   "defaultToolFrame": "tool",
+  "endEffectors": [
+    {
+      "id": "robotiq_2f85",
+      "name": "Robotiq 2F-85 Adaptive Gripper",
+      "shortName": "2F-85",
+      "packageName": "robotiq_description",
+      "packagePath": "/robotiq_description",
+      "urdfPath": "/robotiq_description/urdf/robotiq_gripper.urdf",
+      "rootLink": "robotiq_85_base_link",
+      "mountFrame": "tool",
+      "origin": {
+        "position": { "x": 0, "y": 0, "z": 0 },
+        "rpy": { "x": 0, "y": 0, "z": 0 }
+      },
+      "tcpOffset": { "x": 0, "y": 0, "z": 0.135 },
+      "command": {
+        "jointName": "robotiq_85_left_knuckle_joint",
+        "label": "Grip",
+        "lower": 0,
+        "upper": 0.8,
+        "open": 0,
+        "close": 0.7929,
+        "velocity": 0.5
+      },
+      "parallelGrip": {
+        "motionMode": "adaptive-linkage",
+        "openWidth": 0.085,
+        "closedWidth": 0.008,
+        "contactEnabled": false,
+        "contactWidth": 0.046,
+        "showContactObject": false,
+        "visual": {
+          "leftFingerLink": "robotiq_85_left_finger_tip_link",
+          "rightFingerLink": "robotiq_85_right_finger_tip_link",
+          "leftPadLink": "robotiq_85_left_finger_tip_link",
+          "rightPadLink": "robotiq_85_right_finger_tip_link"
+        },
+        "object": {
+          "shape": "cylinder",
+          "position": { "x": 0, "y": 0, "z": 0.135 },
+          "rpy": { "x": 0, "y": 0, "z": 1.5707963267948966 },
+          "size": { "x": 0.058, "y": 0.046, "z": 0.046 }
+        }
+      }
+    }
+  ],
   "linkChain": ["link_base", "link1", "link2", "link3", "link4", "link5", "link6", "link7", "link_eef"],
   "downstreamLinks": {
     "joint1": ["link1", "link2", "link3", "link4", "link5", "link6", "link7"],

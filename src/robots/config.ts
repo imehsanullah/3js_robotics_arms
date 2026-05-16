@@ -2,6 +2,11 @@ import type {
   JointName,
   JointSpec,
   JointValues,
+  EndEffectorContactObjectDefinition,
+  EndEffectorGripMotionMode,
+  EndEffectorParallelGripDefinition,
+  EndEffectorParallelGripVisualDefinition,
+  RobotEndEffectorDefinition,
   RobotActionDefinition,
   RobotCapabilities,
   RobotCollisionMetadata,
@@ -97,6 +102,7 @@ function normalizeRobotDefinition(raw: unknown, sourcePath: string): RobotDefini
     linkChain: optionalStringArray(record.linkChain, `${sourcePath}.linkChain`),
     collision: normalizeCollisionMetadata(record.collision, record.linkChain, `${sourcePath}.collision`),
     downstreamLinks: normalizeStringArrayRecord(record.downstreamLinks, `${sourcePath}.downstreamLinks`),
+    endEffectors: normalizeEndEffectors(record.endEffectors, defaultToolFrame, `${sourcePath}.endEffectors`),
     presets: normalizeJointValueMaps(record.presets, jointNames, `${sourcePath}.presets`),
     actions,
     defaultAction: optionalString(record.defaultAction),
@@ -140,6 +146,125 @@ function normalizeCollisionMetadata(raw: unknown, fallbackLinkChain: unknown, so
         });
 
   return { adjacentLinkChains, disabledPairs };
+}
+
+function normalizeEndEffectors(
+  raw: unknown,
+  defaultMountFrame: string,
+  sourcePath: string,
+): RobotEndEffectorDefinition[] {
+  if (raw === undefined) {
+    return [];
+  }
+
+  return asArray(raw, sourcePath).map((item, index) => {
+    const endEffectorRaw = asRecord(item, `${sourcePath}[${index}]`);
+    return {
+      id: requiredString(endEffectorRaw, 'id', `${sourcePath}[${index}]`),
+      name: requiredString(endEffectorRaw, 'name', `${sourcePath}[${index}]`),
+      shortName: requiredString(endEffectorRaw, 'shortName', `${sourcePath}[${index}]`),
+      packageName: requiredString(endEffectorRaw, 'packageName', `${sourcePath}[${index}]`),
+      packagePath: requiredString(endEffectorRaw, 'packagePath', `${sourcePath}[${index}]`),
+      urdfPath: requiredString(endEffectorRaw, 'urdfPath', `${sourcePath}[${index}]`),
+      rootLink: requiredString(endEffectorRaw, 'rootLink', `${sourcePath}[${index}]`),
+      mountFrame: optionalString(endEffectorRaw.mountFrame) ?? defaultMountFrame,
+      origin: normalizeTransform(endEffectorRaw.origin, `${sourcePath}[${index}].origin`),
+      tcpOffset: normalizeOptionalVector(endEffectorRaw.tcpOffset, `${sourcePath}[${index}].tcpOffset`),
+      command: normalizeEndEffectorCommand(endEffectorRaw.command, `${sourcePath}[${index}].command`),
+      parallelGrip: normalizeParallelGrip(endEffectorRaw.parallelGrip, `${sourcePath}[${index}].parallelGrip`),
+    };
+  });
+}
+
+function normalizeEndEffectorCommand(raw: unknown, sourcePath: string) {
+  const record = asRecord(raw, sourcePath);
+  return {
+    jointName: requiredString(record, 'jointName', sourcePath),
+    label: optionalString(record.label) ?? 'Grip',
+    lower: requiredNumber(record, 'lower', sourcePath),
+    upper: requiredNumber(record, 'upper', sourcePath),
+    open: requiredNumber(record, 'open', sourcePath),
+    close: requiredNumber(record, 'close', sourcePath),
+    velocity: requiredNumber(record, 'velocity', sourcePath),
+  };
+}
+
+function normalizeParallelGrip(raw: unknown, sourcePath: string): EndEffectorParallelGripDefinition | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  const record = asRecord(raw, sourcePath);
+  const motionMode = normalizeGripMotionMode(record.motionMode, `${sourcePath}.motionMode`);
+  return {
+    motionMode,
+    openWidth: requiredNumber(record, 'openWidth', sourcePath),
+    closedWidth: requiredNumber(record, 'closedWidth', sourcePath),
+    contactEnabled: optionalBoolean(record.contactEnabled) ?? motionMode !== 'parallel-pinch',
+    contactWidth: requiredNumber(record, 'contactWidth', sourcePath),
+    showContactObject: optionalBoolean(record.showContactObject) ?? false,
+    object: normalizeContactObject(record.object, `${sourcePath}.object`),
+    visual: normalizeParallelGripVisual(record.visual, `${sourcePath}.visual`),
+  };
+}
+
+function normalizeGripMotionMode(raw: unknown, sourcePath: string): EndEffectorGripMotionMode {
+  if (raw === undefined) {
+    return 'adaptive-linkage';
+  }
+  if (raw === 'adaptive-linkage' || raw === 'parallel-pinch') {
+    return raw;
+  }
+  throw new Error(`Expected grip motion mode adaptive-linkage or parallel-pinch: ${sourcePath}`);
+}
+
+function normalizeContactObject(raw: unknown, sourcePath: string): EndEffectorContactObjectDefinition {
+  const record = asRecord(raw, sourcePath);
+  const shape = requiredString(record, 'shape', sourcePath);
+  if (shape !== 'box' && shape !== 'cylinder') {
+    throw new Error(`Expected contact object shape to be box or cylinder: ${sourcePath}.shape`);
+  }
+
+  return {
+    shape,
+    position: normalizeOptionalVector(record.position, `${sourcePath}.position`),
+    rpy: normalizeOptionalVector(record.rpy, `${sourcePath}.rpy`),
+    size: normalizeVector(record.size, `${sourcePath}.size`),
+  };
+}
+
+function normalizeParallelGripVisual(raw: unknown, sourcePath: string): EndEffectorParallelGripVisualDefinition {
+  if (raw === undefined) {
+    return {
+      leftFingerLink: 'left_inner_finger',
+      rightFingerLink: 'right_inner_finger',
+      leftPadLink: 'left_inner_finger_pad',
+      rightPadLink: 'right_inner_finger_pad',
+    };
+  }
+
+  const record = asRecord(raw, sourcePath);
+  return {
+    leftFingerLink: requiredString(record, 'leftFingerLink', sourcePath),
+    rightFingerLink: requiredString(record, 'rightFingerLink', sourcePath),
+    leftPadLink: requiredString(record, 'leftPadLink', sourcePath),
+    rightPadLink: requiredString(record, 'rightPadLink', sourcePath),
+  };
+}
+
+function normalizeTransform(raw: unknown, sourcePath: string) {
+  if (raw === undefined) {
+    return {
+      position: zeroVector(),
+      rpy: zeroVector(),
+    };
+  }
+
+  const record = asRecord(raw, sourcePath);
+  return {
+    position: normalizeOptionalVector(record.position, `${sourcePath}.position`),
+    rpy: normalizeOptionalVector(record.rpy, `${sourcePath}.rpy`),
+  };
 }
 
 function normalizeJointSpec(raw: unknown, sourcePath: string): JointSpec {
@@ -281,6 +406,14 @@ function normalizeVector(raw: unknown, sourcePath: string) {
   };
 }
 
+function normalizeOptionalVector(raw: unknown, sourcePath: string) {
+  return raw === undefined ? zeroVector() : normalizeVector(raw, sourcePath);
+}
+
+function zeroVector() {
+  return { x: 0, y: 0, z: 0 };
+}
+
 function normalizeCamera(raw: unknown, sourcePath: string) {
   const record = asRecord(raw, sourcePath);
   return {
@@ -290,11 +423,14 @@ function normalizeCamera(raw: unknown, sourcePath: string) {
 }
 
 function requiredArray(record: Record<string, unknown>, key: string, sourcePath: string) {
-  const value = record[key];
-  if (!Array.isArray(value)) {
-    throw new Error(`Expected array ${sourcePath}.${key}`);
+  return asArray(record[key], `${sourcePath}.${key}`);
+}
+
+function asArray(raw: unknown, sourcePath: string) {
+  if (!Array.isArray(raw)) {
+    throw new Error(`Expected array ${sourcePath}`);
   }
-  return value;
+  return raw;
 }
 
 function requiredStringArray(record: Record<string, unknown>, key: string, sourcePath: string) {
