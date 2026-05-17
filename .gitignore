@@ -3,3 +3,5 @@ dist/
 artifacts/
 .vite/
 *.log
+.env
+.env.*

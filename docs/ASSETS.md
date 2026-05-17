@@ -11,14 +11,14 @@ The viewer uses upstream robot description packages copied into `public/` with s
 - Local copy: `public/ur_description`
 - Browser URDF: `public/ur_description/urdf/ur5e.urdf`
 
-## Franka Panda / FP3
+## Franka Research 3
 
 - Source package: `franka_description` from `frankarobotics/franka_description`
-- Visual meshes: `meshes/robots/fp3/visual/*.dae`
-- Collision meshes: `meshes/robots/fp3/collision/*.stl`
-- Kinematics, inertial, dynamics, accelerometer, and joint-limit values: `robots/fp3/*.yaml`
+- Visual meshes: `meshes/robots/fr3/visual/*.dae`
+- Collision meshes: `meshes/robots/fr3/collision/*.stl`
+- Kinematics, inertial, dynamics, accelerometer, and joint-limit values: `robots/fr3/*.yaml`
 - Local copy: `public/franka_description`
-- Browser URDF: `public/franka_description/urdf/fp3.urdf`
+- Browser URDF: `public/franka_description/urdf/fr3.urdf`
 
 ## UFACTORY xArm7
 
@@ -31,7 +31,7 @@ The viewer uses upstream robot description packages copied into `public/` with s
 
 ## Robotiq 2F-85 Gripper
 
-- Source package: `robotiq_description` from `RoboticManipulation/ros2_robotiq_gripper`, branch `humble-test-setup`
+- Source package: `robotiq_description` from `ros2_robotiq_gripper`
 - Visual meshes: `meshes/visual/*.dae`
 - Collision meshes: `meshes/collision/*.stl`
 - Kinematics, mimic joints, limits, inertials, and contact/friction metadata: `urdf/robotiq_gripper_macro.urdf.xacro`

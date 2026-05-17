@@ -1,11 +1,11 @@
 {
   "id": "panda",
-  "name": "Franka Panda / FP3",
-  "shortName": "Panda",
-  "description": "Official Franka FP3 model with Panda-style 7-DOF arm",
+  "name": "Franka Research 3",
+  "shortName": "FR3",
+  "description": "Official Franka Research 3 model with white FR3 visual meshes",
   "packageName": "franka_description",
   "packagePath": "/franka_description",
-  "urdfPath": "/franka_description/urdf/fp3.urdf",
+  "urdfPath": "/franka_description/urdf/fr3.urdf",
   "rootLink": "link0",
   "jointSpecs": [
     { "name": "joint1", "label": "Joint 1", "lower": -2.9007, "upper": 2.9007, "velocity": 2.62, "effort": 87 },

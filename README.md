@@ -1,8 +1,28 @@
 # Three.js Robot Physics
 
-Interactive Three.js robot visualization and kinematic action platform built from official robot description assets. The current registry includes UR5e, Franka Panda / FP3, and UFACTORY xArm7.
+Interactive Three.js robot visualization and kinematic action platform. The current registry includes UR5e, Franka Research 3, and UFACTORY xArm7.
 
 ## Run
+
+With Docker:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:5174`. To use a different host port:
+
+```bash
+APP_PORT=5175 docker compose up --build
+```
+
+Stop it with:
+
+```bash
+docker compose down
+```
+
+Local Node:
 
 ```bash
 npm install
@@ -13,9 +33,9 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 
 ## What Is Implemented
 
-- Robot picker for UR5e, Panda / FP3, and xArm7.
+- Robot picker for UR5e, Franka Research 3, and xArm7.
 - Static browser-ready URDFs generated from upstream ROS xacro/config data.
-- Official visual and collision meshes copied under `public/`.
+- Official visual and collision meshes under `public/`.
 - Config-driven Robotiq 2F-85 gripper mounting using the upstream ROS2 description, mimic-joint close kinematics, and optional gripper-object contact preview.
 - Revolute joint hierarchy, limits, effort limits, and max-velocity constrained motion.
 - Forward kinematics with live tool-frame or gripper TCP pose.
@@ -29,63 +49,9 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Config-driven robot metadata keeps arm-style manipulators extendable without robot-specific runtime code.
 - A `SimulationBackend` interface is in place so a real physics backend can be added later without replacing the UI/control layer.
 
-## Browser Move Group API
+## Browser APIs
 
-Open browser devtools on the running app and use the exposed group:
-
-```js
-const arm = window.moveIt.group('manipulator');
-
-await arm.setNamedTarget('ready').go();
-await arm.setNamedTarget('reach').go();
-
-await arm
-  .setJointValueTarget({
-    joint1: 0.4,
-    joint2: -0.7,
-    joint4: 1.2,
-  })
-  .go();
-
-await arm
-  .setPoseTarget({
-    position: { x: -0.48, y: -0.34, z: 0.46 },
-  })
-  .go();
-
-arm.stop();
-```
-
-The browser implementation is intentionally MoveIt-like, not full MoveIt. It uses joint-space interpolation, the existing CCD IK for pose targets, velocity limits, and optional mesh collision checks.
-
-## Browser Gripper API
-
-The active end effector is exposed separately from the arm move group:
-
-```js
-window.gripper.close();
-window.gripper.open();
-window.gripper.set(0.4);
-window.gripper.get();
-window.gripper.getOpening();
-window.gripper.getMotionMode();
-window.gripper.setMotionMode('adaptive-linkage');
-window.gripper.setMotionMode('parallel-pinch');
-window.gripper.setContactEnabled(true);
-```
-
-The current Robotiq configs default to the upstream adaptive-linkage mimic joints from `robotiq_description`, while the readout reports the estimated jaw gap. Enable contact preview from code when you want `close()` to stop at the configured object width and report contact. For pose targets, `MoveGroupLite` uses the gripper TCP when a gripper is mounted, so `setPoseTarget()` moves the grasp point rather than the bare arm flange.
-
-## Browser Action API
-
-Robot definitions can expose named keyframe actions. The current app plays the robot's `defaultAction` from the play button, and actions can also be sampled from code:
-
-```js
-const actionName = 'wave_preview';
-// See src/motion/actionPlayer.ts for reusable action sampling/playback.
-```
-
-Actions are kinematic previews, not dynamic simulations.
+Move groups, gripper helpers, and keyframe actions are exposed on `window` in devtools. See [docs/BROWSER_API.md](docs/BROWSER_API.md).
 
 ## Code Structure
 
