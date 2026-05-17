@@ -2,6 +2,22 @@
 
 Interactive Three.js robot visualization and kinematic action platform. The current registry includes UR5e, Franka Research 3, and UFACTORY xArm7.
 
+## Preview
+
+The browser UI pairs joint sliders, IK target controls, Move Group presets, and scene overlays with each robot model.
+
+![xArm7 in the browser](docs/images/xarm7-browser-ui.png)
+
+**UFACTORY xArm7**
+
+![UR5e in the browser](docs/images/ur5e-browser-ui.png)
+
+**Universal Robots UR5e**
+
+![Franka Research 3 (FR3) in the browser](docs/images/fr3-browser-ui.png)
+
+**Franka Research 3 (FR3)**
+
 ## Run
 
 With Docker:
