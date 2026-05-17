@@ -58,13 +58,12 @@ The app serves browser-ready URDFs and meshes from `public/*_description`.
 - Robot picker for UR5e, Franka Research 3, and xArm7.
 - Static browser-ready URDFs generated from upstream ROS xacro/config data.
 - Official visual and collision meshes under `public/`.
-- Config-driven Robotiq 2F-85 gripper mounting using the upstream ROS2 description, mimic-joint close kinematics, and optional gripper-object contact preview.
+- Robotiq 2F-85 gripper mounted on the end of the arm.
 - Revolute joint hierarchy, limits, effort limits, and max-velocity constrained motion.
 - Forward kinematics with live tool-frame or gripper TCP pose.
 - CCD inverse kinematics for a movable tool target.
 - Mouse-draggable pose target in the 3D viewport.
 - Browser-only `MoveGroupLite` API for named targets, joint targets, pose targets, planning, execution, and stop.
-- Keyframe action playback for preview motions such as `wave_preview`.
 - Collision checking between non-adjacent official collision meshes using BVH mesh intersection.
 - Inertial mass properties, per-link center of mass markers, total center of mass, and gravity torque estimates per joint.
 - Robot definitions are loaded from JSON configs under `public/robots/` and describe groups, frames, capabilities, presets, and actions.
