@@ -8,13 +8,19 @@ The browser UI pairs joint sliders, IK target controls, Move Group presets, and 
 
 ![xArm7 in the browser](docs/images/xarm7-browser-ui.png)
 
+![xArm7 motion preview](docs/images/xarm7-browser-demo.gif)
+
 **UFACTORY xArm7**
 
 ![UR5e in the browser](docs/images/ur5e-browser-ui.png)
 
+![UR5e motion preview](docs/images/ur5e-browser-demo.gif)
+
 **Universal Robots UR5e**
 
 ![Franka Research 3 (FR3) in the browser](docs/images/fr3-browser-ui.png)
+
+![Franka Research 3 motion preview](docs/images/fr3-browser-demo.gif)
 
 **Franka Research 3 (FR3)**
 
