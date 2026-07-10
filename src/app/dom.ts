@@ -1,4 +1,4 @@
-export function queryRequired<T extends Element>(selector: string): T {
+function queryRequired<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
   if (!element) {
     throw new Error(`Robot UI missing required element: ${selector}`);
@@ -14,8 +14,6 @@ export interface AppElements {
   jointControls: HTMLDivElement;
   gripperControls: HTMLDivElement;
   gripperState: HTMLOutputElement;
-  torqueReadout: HTMLDivElement;
-  collisionReadout: HTMLDivElement;
   assetState: HTMLSpanElement;
   collisionState: HTMLSpanElement;
   poseHud: HTMLDivElement;
@@ -32,7 +30,6 @@ export interface AppElements {
   comToggle: HTMLInputElement;
   framesToggle: HTMLInputElement;
   moveGroupState: HTMLOutputElement;
-  assetDescription: HTMLParagraphElement;
 }
 
 export function queryAppElements(): AppElements {
@@ -44,8 +41,6 @@ export function queryAppElements(): AppElements {
     jointControls: queryRequired<HTMLDivElement>('#joint-controls'),
     gripperControls: queryRequired<HTMLDivElement>('#gripper-controls'),
     gripperState: queryRequired<HTMLOutputElement>('#gripper-state'),
-    torqueReadout: queryRequired<HTMLDivElement>('#torque-readout'),
-    collisionReadout: queryRequired<HTMLDivElement>('#collision-readout'),
     assetState: queryRequired<HTMLSpanElement>('#asset-state'),
     collisionState: queryRequired<HTMLSpanElement>('#collision-state'),
     poseHud: queryRequired<HTMLDivElement>('#pose-hud'),
@@ -62,6 +57,5 @@ export function queryAppElements(): AppElements {
     comToggle: queryRequired<HTMLInputElement>('#com-toggle'),
     framesToggle: queryRequired<HTMLInputElement>('#frames-toggle'),
     moveGroupState: queryRequired<HTMLOutputElement>('#move-group-state'),
-    assetDescription: queryRequired<HTMLParagraphElement>('#asset-description'),
   };
 }

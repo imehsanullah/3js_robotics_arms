@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { URDFRobot } from 'urdf-loader';
+import type { URDFLink, URDFRobot } from 'urdf-loader';
 import type { InertialLink } from './types';
 
-export interface InertialCollection {
+interface InertialCollection {
   inertialLinks: InertialLink[];
   totalMass: number;
 }
@@ -16,23 +16,24 @@ export function collectInertialLinks(
   const inertialLinks: InertialLink[] = [];
   let totalMass = 0;
 
-  for (const [name, link] of Object.entries(model.links)) {
-    if (!link.inertial || link.inertial.mass <= 0) {
-      continue;
+  model.traverse(object => {
+    const link = object as Partial<URDFLink>;
+    if (!link.isURDFLink || !link.inertial || link.inertial.mass <= 0) {
+      return;
     }
     const marker = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), material);
     marker.visible = visible;
     scene.add(marker);
     const localCog = new THREE.Vector3(...link.inertial.origin.xyz);
     inertialLinks.push({
-      link,
-      name,
+      link: link as URDFLink,
+      name: link.urdfName ?? link.name ?? 'unnamed_link',
       mass: link.inertial.mass,
       localCog,
       marker,
     });
     totalMass += link.inertial.mass;
-  }
+  });
 
   return { inertialLinks, totalMass };
 }

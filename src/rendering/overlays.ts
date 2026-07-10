@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { RobotMaterials } from './materials';
 
-export interface RobotOverlays {
+interface RobotOverlays {
   targetMesh: THREE.Mesh;
   toolFrame: THREE.AxesHelper;
   totalComMesh: THREE.Mesh;

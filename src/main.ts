@@ -1,51 +1,36 @@
 import './styles.css';
 
 import * as THREE from 'three';
-import type { URDFRobot } from 'urdf-loader';
+import { clearBrowserApis, installBrowserApis } from './app/browserApi';
 import { queryAppElements } from './app/dom';
-import { CartesianPoseTarget, MoveGroupLite, MoveGroupStatus } from './moveGroupLite';
+import type { LoadedRobotRuntime } from './app/robotRuntime';
 import { buildEndEffectorControls } from './endEffectors/controls';
 import type { EndEffectorControlHandles } from './endEffectors/controls';
 import {
-  collectParallelGripCollisionMeshes,
-  createParallelGripContact,
-  setParallelGripCollisionVisibility,
-} from './endEffectors/contact';
-import {
   applyEndEffectorStep,
-  createEndEffectorRuntime,
   formatEndEffectorRuntimeState,
-  getEndEffectorOpening,
-  setEndEffectorContactPreview,
-  setEndEffectorMotionMode,
   setEndEffectorTarget,
 } from './endEffectors/state';
-import type { EndEffectorRuntime } from './endEffectors/state';
 import { ActionPlayer } from './motion/actionPlayer';
 import { solveCcdIk } from './motion/ccdIk';
+import { createMotionCoordinator } from './motion/coordinator';
 import { createJointStateStore } from './motion/jointState';
 import type { OutputMap, SliderMap } from './motion/jointState';
+import type { CartesianPoseTarget, MoveGroup, MoveGroupLite, MoveGroupStatus } from './motion/moveGroup';
+import { MoveGroupLite as MoveGroupController } from './motion/moveGroup';
+import { setInertialVisibility, updateCenterOfMass } from './physics/inertials';
 import {
   cloneJointValues,
-  getDefaultGroup,
   getDefaultPreset,
   getFrameName,
   loadRobotRegistry,
 } from './robots';
-import type { EndEffectorGripMotionMode, JointName, JointValues, PoseName, RobotDefinition } from './robots';
-import { collectCollisionMeshes, buildCollisionPairs, detectCollisions, setCollisionVisibility } from './physics/collisions';
-import { computeGravityTorques } from './physics/gravityTorques';
-import { collectInertialLinks, setInertialVisibility, updateCenterOfMass } from './physics/inertials';
-import type { CollisionMesh, InertialLink } from './physics/types';
-import { installBvhExtensions } from './rendering/bvh';
-import { disposeObjectTree } from './rendering/dispose';
+import type { JointName, JointValues, PoseName, RobotDefinition } from './robots';
 import { createRobotMaterials } from './rendering/materials';
 import { createRobotOverlays } from './rendering/overlays';
-import { configureRobotMaterials, countUrdfVisuals, getRobotFrame, loadUrdfWithAssets } from './rendering/robotLoader';
 import { createRobotScene } from './rendering/scene';
 import { installTargetDrag } from './rendering/targetDrag';
-import { KinematicBackend } from './simulation/kinematicBackend';
-import { updatePlayIcon, renderIcons } from './ui/icons';
+import { renderIcons, updatePlayIcon } from './ui/icons';
 import { buildJointControls } from './ui/jointControls';
 import {
   markRobotLoadFailed,
@@ -59,33 +44,13 @@ import { populateRobotSelector } from './ui/robotSelector';
 import { buildTargetControls, setTargetPositionFromPose } from './ui/targetControls';
 import type { TargetControlMaps } from './ui/targetControls';
 
-declare global {
-  interface Window {
-    moveIt?: MoveGroupLite;
-    robotMoveGroup?: ReturnType<MoveGroupLite['group']>;
-    ur5eMoveGroup?: ReturnType<MoveGroupLite['group']>;
-    gripper?: {
-      open(): void;
-      close(): void;
-      set(value: number): void;
-      get(): number | null;
-      getOpening(): number | null;
-      getMotionMode(): EndEffectorGripMotionMode | null;
-      setMotionMode(mode: EndEffectorGripMotionMode): void;
-      setContactEnabled(enabled: boolean, showObject?: boolean): void;
-    };
-  }
-}
-
-installBvhExtensions();
+const PHYSICS_UPDATE_INTERVAL_MS = 100;
 
 const elements = queryAppElements();
 const robotScene = createRobotScene(elements.canvas);
 const materials = createRobotMaterials();
 const overlays = createRobotOverlays(robotScene.scene, materials);
-const backend = new KinematicBackend();
 const actionPlayer = new ActionPlayer();
-
 const protectedMaterials = new Set<THREE.Material>([
   materials.visualFallback,
   materials.collision,
@@ -93,7 +58,6 @@ const protectedMaterials = new Set<THREE.Material>([
   materials.target,
   materials.com,
   materials.totalCom,
-  materials.graspObject,
 ]);
 
 const jointSliders: SliderMap = {};
@@ -103,6 +67,28 @@ const targetControlMaps: TargetControlMaps = {
   inputs: {} as Record<'x' | 'y' | 'z', HTMLInputElement>,
   outputs: {} as Record<'x' | 'y' | 'z', HTMLOutputElement>,
 };
+const motion = createMotionCoordinator({
+  actionPlayer,
+  onActionPlayingChanged: updatePlayIcon,
+});
+
+let robots: RobotDefinition[] = [];
+let robotById: Record<string, RobotDefinition> = {};
+let activeRobot!: RobotDefinition;
+let runtime: LoadedRobotRuntime | null = null;
+let moveIt: MoveGroupLite | null = null;
+let activeMoveGroup: MoveGroup | null = null;
+let endEffectorControls: EndEffectorControlHandles = { slider: null, output: null };
+let loadToken = 0;
+let speedScale = Number(elements.speedScaleInput.value);
+let previousFrameTime = performance.now();
+let lastPhysicsUpdate = Number.NEGATIVE_INFINITY;
+let physicsDirty = false;
+let runtimeModule!: typeof import('./app/robotRuntime');
+
+const toolPosition = new THREE.Vector3();
+const toolQuaternion = new THREE.Quaternion();
+const emptyCom = new THREE.Vector3();
 
 installTargetDrag({
   canvas: elements.canvas,
@@ -111,31 +97,11 @@ installTargetDrag({
   targetMesh: overlays.targetMesh,
   targetPosition: overlays.targetPosition,
   targetControls: targetControlMaps,
-  onDragStart: () => {
-    actionPlayer.stop();
-    updatePlayIcon(false);
-    activeMoveGroup?.stop();
+  onDragStart: motion.cancelAndHold,
+  onDrag: () => {
+    physicsDirty = true;
   },
 });
-
-let robots: RobotDefinition[] = [];
-let robotById: Record<string, RobotDefinition> = {};
-let activeRobot: RobotDefinition;
-let robotModel: URDFRobot | null = null;
-let robotAssetsReady = false;
-let loadToken = 0;
-let speedScale = Number(elements.speedScaleInput.value);
-let totalMass = 0;
-let visualCount = 0;
-let collisionMeshes: CollisionMesh[] = [];
-let endEffectorCollisionMeshes: CollisionMesh[] = [];
-let parallelEndEffectorCollisionMeshes: CollisionMesh[] = [];
-let collisionPairSet = new Set<string>();
-let inertialLinks: InertialLink[] = [];
-let moveIt: MoveGroupLite | null = null;
-let activeMoveGroup: ReturnType<MoveGroupLite['group']> | null = null;
-let activeEndEffectorRuntime: EndEffectorRuntime | null = null;
-let endEffectorControlHandles: EndEffectorControlHandles = { slider: null, output: null };
 
 void bootstrap().catch(error => {
   elements.assetState.textContent = 'Robot config failed';
@@ -145,7 +111,11 @@ void bootstrap().catch(error => {
 
 async function bootstrap() {
   elements.assetState.textContent = 'Loading robot configs';
-  const registry = await loadRobotRegistry();
+  const [registry, loadedRuntimeModule] = await Promise.all([
+    loadRobotRegistry(`${import.meta.env.BASE_URL}robots/index.json`, import.meta.env.BASE_URL),
+    import('./app/robotRuntime'),
+  ]);
+  runtimeModule = loadedRuntimeModule;
   robots = registry.robots;
   robotById = registry.robotById;
   activeRobot = robots[0];
@@ -155,36 +125,27 @@ async function bootstrap() {
   });
   bindControls();
   renderIcons();
-
-  void loadRobot(activeRobot.id);
-
-  window.addEventListener('resize', robotScene.resize);
+  window.addEventListener('pagehide', robotScene.dispose, { once: true });
   robotScene.resize();
   robotScene.renderer.setAnimationLoop(render);
+  await loadRobot(activeRobot.id);
 }
 
 async function loadRobot(robotId: string) {
   const nextRobot = robotById[robotId] ?? robots[0];
   const token = ++loadToken;
-
-  activeMoveGroup?.stop();
+  motion.cancelAndHold();
+  motion.setMoveGroup(null);
   actionPlayer.reset();
   updatePlayIcon(false);
-  disposeLoadedRobot();
+  clearBrowserApis();
+  runtime?.dispose();
+  runtime = null;
 
   activeRobot = nextRobot;
   elements.robotSelector.value = activeRobot.id;
   elements.motionState.textContent = 'Loading';
-  robotAssetsReady = false;
-  visualCount = 0;
-  totalMass = 0;
-  collisionMeshes = [];
-  endEffectorCollisionMeshes = [];
-  parallelEndEffectorCollisionMeshes = [];
-  inertialLinks = [];
-  collisionPairSet = new Set<string>();
-
-  backend.loadRobot(activeRobot);
+  elements.gripperState.textContent = activeRobot.endEffector ? 'Loading' : 'None';
   jointState.syncRobot(activeRobot, getDefaultPreset(activeRobot));
   overlays.targetPosition.set(activeRobot.initialTarget.x, activeRobot.initialTarget.y, activeRobot.initialTarget.z);
   overlays.targetMesh.position.copy(overlays.targetPosition);
@@ -197,121 +158,57 @@ async function loadRobot(robotId: string) {
   updateVisibility();
 
   try {
-    const loadedRobot = await loadUrdfWithAssets(activeRobot.urdfPath, robots);
+    const loaded = await runtimeModule.loadRobotRuntime({
+      definition: activeRobot,
+      registry: robots,
+      scene: robotScene.scene,
+      materials,
+      protectedMaterials,
+      collisionVisible: elements.collisionToggle.checked,
+      inertialsVisible: elements.comToggle.checked,
+    });
     if (token !== loadToken) {
-      disposeObjectTree(loadedRobot, protectedMaterials);
+      loaded.dispose();
       return;
     }
-
-    robotModel = loadedRobot;
-    robotModel.name = activeRobot.name;
-    robotScene.scene.add(robotModel);
-    backend.attachModel(robotModel);
+    runtime = loaded;
     applyJointState(true);
-    configureRobotMaterials(robotModel, materials, elements.collisionToggle.checked);
-    elements.assetState.textContent = 'Arm loaded';
-
-    await loadActiveEndEffector(token);
-    if (token !== loadToken || !robotModel) {
-      return;
-    }
-
-    configureRobotMaterials(robotModel, materials, elements.collisionToggle.checked);
-    robotAssetsReady = true;
-    const allCollisionMeshes = activeRobot.capabilities.supportsCollision
-      ? collectCollisionMeshes(robotModel, materials.collision)
-      : [];
-    const endEffectorLinkNames = getEndEffectorLinkNames();
-    collisionMeshes = allCollisionMeshes.filter(item => !endEffectorLinkNames.has(item.linkName));
-    endEffectorCollisionMeshes = allCollisionMeshes.filter(item => endEffectorLinkNames.has(item.linkName));
-    parallelEndEffectorCollisionMeshes = collectParallelGripCollisionMeshes(
-      activeEndEffectorRuntime?.parallelVisual ?? null,
-      materials.collision,
-    );
-    inertialLinks = activeRobot.capabilities.supportsInertials
-      ? collectInertialLinks(robotModel, robotScene.scene, materials.com, elements.comToggle.checked).inertialLinks
-      : [];
-    totalMass = inertialLinks.reduce((sum, item) => sum + item.mass, 0);
-    collisionPairSet = buildCollisionPairs(activeRobot, collisionMeshes);
-    visualCount = countUrdfVisuals(robotModel);
-
+    applyEndEffector(true);
+    rebuildEndEffectorControls();
+    installCurrentBrowserApis();
     markRobotReady(
       elements,
       activeRobot,
-      visualCount,
-      collisionMeshes.length + endEffectorCollisionMeshes.length + parallelEndEffectorCollisionMeshes.length,
-      totalMass,
+      runtime.visualCount,
+      runtime.collisionMeshes.length,
+      runtime.totalMass,
     );
-    applyJointState(true);
-    applyEndEffectorRuntime(true);
     updateVisibility();
     updateMoveGroupStatus({ groupName: activeRobot.defaultGroup, state: 'idle', message: 'Ready' });
+    physicsDirty = true;
+    updatePhysicsReadouts(performance.now(), true);
+    robotScene.resize();
+    requestAnimationFrame(robotScene.resize);
   } catch (error) {
-    if (token !== loadToken) {
-      return;
-    }
+    if (token !== loadToken) return;
     markRobotLoadFailed(elements);
     console.error(error);
   }
 }
 
-function disposeLoadedRobot() {
-  activeEndEffectorRuntime = null;
-  endEffectorCollisionMeshes = [];
-  parallelEndEffectorCollisionMeshes = [];
-  window.gripper = undefined;
-
-  if (robotModel) {
-    robotScene.scene.remove(robotModel);
-    disposeObjectTree(robotModel, protectedMaterials);
-    robotModel = null;
-  }
-
-  for (const item of inertialLinks) {
-    robotScene.scene.remove(item.marker);
-    disposeObjectTree(item.marker, protectedMaterials);
-  }
-
-  backend.attachModel(null);
-  collisionMeshes = [];
-  endEffectorCollisionMeshes = [];
-  parallelEndEffectorCollisionMeshes = [];
-  inertialLinks = [];
-  collisionPairSet.clear();
-}
-
-function rebuildControls() {
-  buildJointControls(
-    elements.jointControls,
-    activeRobot,
-    jointState.targetJoints,
-    jointSliders,
-    jointOutputs,
-    (jointName, value) => {
-      actionPlayer.stop();
-      updatePlayIcon(false);
-      jointState.setTargets(activeRobot, { [jointName]: value }, false);
-    },
-  );
-  buildTargetControls(elements.targetControls, overlays.targetPosition, overlays.targetMesh, targetControlMaps);
-  updateEndEffectorControls();
-}
-
 function setupMoveGroup() {
   const groups = Object.fromEntries(
-    Object.values(activeRobot.groups).map(groupDefinition => [groupDefinition.name, groupDefinition.jointNames]),
+    Object.entries(activeRobot.groups).map(([name, definition]) => [name, definition.jointNames]),
   );
-  const defaultGroup = getDefaultGroup(activeRobot);
-
-  moveIt = new MoveGroupLite(
+  moveIt = new MoveGroupController(
     {
-      isReady: () => robotAssetsReady && Boolean(robotModel),
+      isReady: () => Boolean(runtime),
       getCurrentJointValues: () => jointState.getCurrent(activeRobot),
       setCurrentJointValues: values =>
         setJointState(values, { syncTarget: true, updateControls: true, forceRobot: true }),
       holdCurrentState: () => jointState.setTargets(activeRobot, jointState.getCurrent(activeRobot), true),
       getCurrentPose,
-      solveIk: (pose, seed) => solveIkForPose(pose, seed),
+      solveIk: solveIkForPose,
       checkCollisionsForState,
       setPoseTargetVisual,
       onStatusChange: updateMoveGroupStatus,
@@ -323,11 +220,18 @@ function setupMoveGroup() {
       namedTargets: activeRobot.presets,
     },
   );
+  activeMoveGroup = moveIt.group();
+  motion.setMoveGroup(activeMoveGroup);
+}
 
-  activeMoveGroup = moveIt.group(defaultGroup.name);
-  window.moveIt = moveIt;
-  window.robotMoveGroup = activeMoveGroup;
-  window.ur5eMoveGroup = activeRobot.groups.manipulator ? moveIt.group('manipulator') : activeMoveGroup;
+function installCurrentBrowserApis() {
+  if (!moveIt || !activeMoveGroup) return;
+  installBrowserApis({
+    moveIt,
+    moveGroup: activeMoveGroup,
+    getEndEffector: () => runtime?.endEffector ?? null,
+    setEndEffectorCommand,
+  });
 }
 
 function bindControls() {
@@ -339,18 +243,8 @@ function bindControls() {
   document.querySelector<HTMLButtonElement>('#solve-ik-button')?.addEventListener('click', solveIkToTarget);
   document.querySelector<HTMLButtonElement>('#move-ready-button')?.addEventListener('click', () => moveToNamedTarget('ready'));
   document.querySelector<HTMLButtonElement>('#move-reach-button')?.addEventListener('click', () => moveToNamedTarget('reach'));
-  document.querySelector<HTMLButtonElement>('#move-target-button')?.addEventListener('click', () => {
-    void activeMoveGroup
-      ?.setPoseTarget({
-        position: { x: overlays.targetPosition.x, y: overlays.targetPosition.y, z: overlays.targetPosition.z },
-      })
-      .go({ avoidCollisions: true });
-  });
-  document.querySelector<HTMLButtonElement>('#move-stop-button')?.addEventListener('click', () => {
-    actionPlayer.stop();
-    updatePlayIcon(false);
-    activeMoveGroup?.stop();
-  });
+  document.querySelector<HTMLButtonElement>('#move-target-button')?.addEventListener('click', moveToCartesianTarget);
+  document.querySelector<HTMLButtonElement>('#move-stop-button')?.addEventListener('click', motion.cancelAndHold);
   elements.speedScaleInput.addEventListener('input', () => {
     speedScale = Number(elements.speedScaleInput.value);
     elements.speedScaleOutput.textContent = `${speedScale.toFixed(2)}x`;
@@ -360,73 +254,88 @@ function bindControls() {
   elements.framesToggle.addEventListener('change', updateVisibility);
 }
 
+function rebuildControls() {
+  buildJointControls(
+    elements.jointControls,
+    activeRobot,
+    jointState.targetJoints,
+    jointSliders,
+    jointOutputs,
+    (jointName, value) => {
+      motion.cancelAndHold();
+      jointState.setTargets(activeRobot, { [jointName]: value });
+    },
+  );
+  buildTargetControls(elements.targetControls, overlays.targetPosition, overlays.targetMesh, targetControlMaps);
+  rebuildEndEffectorControls();
+}
+
+function rebuildEndEffectorControls() {
+  const definition = activeRobot.endEffector ?? null;
+  const value = runtime?.endEffector?.current ?? definition?.command.open ?? 0;
+  endEffectorControls = buildEndEffectorControls(
+    elements.gripperControls,
+    definition,
+    value,
+    setEndEffectorCommand,
+  );
+  renderIcons();
+  updateEndEffectorReadout();
+}
+
 function toggleDefaultAction() {
   if (actionPlayer.state.playing) {
-    actionPlayer.stop();
-    updatePlayIcon(false);
+    motion.cancelAndHold();
     elements.motionState.textContent = 'Manual';
     return;
   }
-
   const actionName = activeRobot.defaultAction;
-  if (!actionName || !activeRobot.actions[actionName]) {
-    return;
-  }
-  activeMoveGroup?.stop();
-  actionPlayer.play(actionName, true);
-  updatePlayIcon(true);
+  if (!actionName || !activeRobot.actions[actionName]) return;
+  motion.startAction(actionName);
   elements.motionState.textContent = activeRobot.actions[actionName].label;
 }
 
 function setPreset(name: PoseName) {
   const preset = activeRobot.presets[name];
-  if (!preset) {
-    return;
-  }
-
-  actionPlayer.stop();
-  updatePlayIcon(false);
-  activeMoveGroup?.stop();
+  if (!preset) return;
+  motion.cancelAndHold();
   elements.motionState.textContent = 'Manual';
   jointState.setTargets(activeRobot, preset, true);
 }
 
 function moveToNamedTarget(name: PoseName) {
-  if (!activeMoveGroup || !activeRobot.presets[name]) {
-    return;
-  }
-  actionPlayer.stop();
-  updatePlayIcon(false);
-  void activeMoveGroup.setNamedTarget(name).go({ avoidCollisions: true });
+  if (!activeMoveGroup || !activeRobot.presets[name]) return;
+  motion.cancelAndHold();
+  void activeMoveGroup.setNamedTarget(name).go({ avoidCollisions: true, speedScale });
+}
+
+function moveToCartesianTarget() {
+  if (!activeMoveGroup) return;
+  motion.cancelAndHold();
+  void activeMoveGroup
+    .setPoseTarget({
+      position: {
+        x: overlays.targetPosition.x,
+        y: overlays.targetPosition.y,
+        z: overlays.targetPosition.z,
+      },
+    })
+    .go({ avoidCollisions: true, speedScale });
 }
 
 function getCurrentPose() {
-  if (!robotModel || !robotAssetsReady) {
-    return null;
-  }
-
-  const tool = getToolFrameObject();
-  if (!tool) {
-    return null;
-  }
-
+  const tool = runtimeModule.getRuntimeToolFrame(runtime);
+  if (!tool) return null;
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   tool.getWorldPosition(position);
   tool.getWorldQuaternion(quaternion);
-  return {
-    position,
-    quaternion,
-    rpy: new THREE.Euler().setFromQuaternion(quaternion, 'XYZ'),
-  };
-}
-
-function getToolFrameObject() {
-  return activeEndEffectorRuntime?.tcpFrame ?? getRobotFrame(robotModel, getFrameName(activeRobot));
+  return { position, quaternion, rpy: new THREE.Euler().setFromQuaternion(quaternion, 'XYZ') };
 }
 
 function setPoseTargetVisual(pose: CartesianPoseTarget) {
   setTargetPositionFromPose(pose.position, overlays.targetPosition, overlays.targetMesh, targetControlMaps);
+  physicsDirty = true;
 }
 
 function updateMoveGroupStatus(status: MoveGroupStatus) {
@@ -441,28 +350,27 @@ function setJointState(
     syncTarget: options.syncTarget,
     updateControls: options.updateControls,
   });
-  if (options.forceRobot) {
-    setRobotJointValues(jointState.currentJoints);
+  if (options.forceRobot && runtime) {
+    runtimeModule.applyRobotJointValues(runtime, jointState.currentJoints);
+    physicsDirty = true;
   }
 }
 
-function setRobotJointValues(values: Partial<Record<JointName, number>>) {
-  backend.setJointValues(values);
-}
-
 function solveIkToTarget() {
+  motion.cancelAndHold();
   const result = solveIkForPose(
     { position: { x: overlays.targetPosition.x, y: overlays.targetPosition.y, z: overlays.targetPosition.z } },
     jointState.getCurrent(activeRobot),
   );
   if (!result.success) {
     updateMoveGroupStatus({ groupName: activeRobot.defaultGroup, state: 'failed', message: result.message ?? 'IK failed' });
+    return;
   }
   setJointState(result.joints, { syncTarget: true, updateControls: true, forceRobot: true });
 }
 
 function solveIkForPose(pose: CartesianPoseTarget, seed: JointValues) {
-  if (!activeRobot.capabilities.supportsIk || !robotAssetsReady) {
+  if (!runtime || !activeRobot.capabilities.supportsIk) {
     return {
       success: false,
       joints: cloneJointValues(activeRobot, seed),
@@ -471,302 +379,135 @@ function solveIkForPose(pose: CartesianPoseTarget, seed: JointValues) {
       message: 'IK is not enabled for this robot.',
     };
   }
-
   return solveCcdIk({
     robot: activeRobot,
-    model: robotModel,
-    toolFrameName: activeEndEffectorRuntime?.tcpFrame.name ?? getFrameName(activeRobot),
-    toolFrameObject: getToolFrameObject(),
+    model: runtime.model,
+    toolFrameName: runtime.endEffector?.tcpFrame.name ?? getFrameName(activeRobot),
+    toolFrameObject: runtimeModule.getRuntimeToolFrame(runtime),
     pose,
     seed,
     getCurrentJointValues: () => jointState.getCurrent(activeRobot),
-    setRobotJointValues: values => setRobotJointValues(values),
+    setRobotJointValues: values => runtimeModule.applyRobotJointValues(runtime!, values),
   });
 }
 
 function checkCollisionsForState(values: JointValues) {
-  if (!robotModel || !robotAssetsReady || !activeRobot.capabilities.supportsCollision) {
-    return [];
-  }
-  const savedCurrent = jointState.getCurrent(activeRobot);
-  setRobotJointValues(values);
-  const collisions = detectActiveCollisions().slice();
-  setRobotJointValues(savedCurrent);
-  detectActiveCollisions();
+  if (!runtime || !activeRobot.capabilities.supportsCollision) return [];
+  const saved = jointState.getCurrent(activeRobot);
+  runtimeModule.applyRobotJointValues(runtime, values);
+  const collisions = runtimeModule.detectRuntimeCollisions(runtime, materials.collision, materials.collisionHit).slice();
+  runtimeModule.applyRobotJointValues(runtime, saved);
+  runtimeModule.detectRuntimeCollisions(runtime, materials.collision, materials.collisionHit);
+  physicsDirty = true;
   return collisions;
 }
 
-function render() {
-  const delta = Math.min(clock.getDelta(), 0.05);
-
-  const actionTarget = actionPlayer.update(activeRobot, delta);
-  if (actionTarget) {
-    jointState.setTargets(activeRobot, actionTarget, true);
+function setEndEffectorCommand(value: number) {
+  const endEffector = runtime?.endEffector;
+  if (!endEffector) return;
+  setEndEffectorTarget(endEffector, value);
+  if (endEffectorControls.slider) {
+    endEffectorControls.slider.value = String(endEffector.target);
   }
-
-  applyJointState(false, delta);
-  applyEndEffectorRuntime(false, delta);
-  robotScene.controls.update();
-  updatePhysicsReadouts();
-  robotScene.renderer.render(robotScene.scene, robotScene.camera);
+  updateEndEffectorReadout();
 }
 
-const clock = new THREE.Clock();
+function updateEndEffectorReadout() {
+  const endEffector = runtime?.endEffector;
+  if (!endEffector) {
+    elements.gripperState.textContent = activeRobot?.endEffector ? 'Loading' : 'None';
+    return;
+  }
+  const label = formatEndEffectorRuntimeState(endEffector);
+  elements.gripperState.textContent = label;
+  if (endEffectorControls.slider) endEffectorControls.slider.value = String(endEffector.current);
+  if (endEffectorControls.output) endEffectorControls.output.textContent = label;
+}
 
 function applyJointState(force: boolean, delta = 1 / 60) {
-  if (!robotModel) {
-    return;
+  if (!runtime) return false;
+  const state = jointState.applyStep(activeRobot, speedScale, delta, force);
+  if (force || state.changed) {
+    runtimeModule.applyRobotJointValues(runtime, jointState.currentJoints);
+    physicsDirty = true;
   }
-
-  const moving = jointState.applyStep(activeRobot, speedScale, delta, force);
-  setRobotJointValues(jointState.currentJoints);
-  backend.step(delta);
-
   if (actionPlayer.state.playing && actionPlayer.state.actionName) {
-    elements.motionState.textContent = activeRobot.actions[actionPlayer.state.actionName]?.label ?? 'Action';
+    setText(elements.motionState, activeRobot.actions[actionPlayer.state.actionName]?.label ?? 'Action');
   } else {
-    elements.motionState.textContent = moving ? 'Moving' : 'Manual';
+    setText(elements.motionState, state.moving ? 'Moving' : 'Manual');
   }
+  return state.moving || state.changed;
 }
 
-function updatePhysicsReadouts() {
-  if (!robotModel || !robotAssetsReady) {
-    return;
-  }
-
-  const tool = getToolFrameObject();
-  if (!tool) {
-    elements.poseHud.textContent = `${getFrameName(activeRobot)} frame unavailable`;
-    return;
-  }
-
-  const toolPosition = new THREE.Vector3();
-  const toolQuaternion = new THREE.Quaternion();
-  tool.getWorldPosition(toolPosition);
-  tool.getWorldQuaternion(toolQuaternion);
-
-  overlays.toolFrame.position.copy(toolPosition);
-  overlays.toolFrame.quaternion.copy(toolQuaternion);
-
-  const totalCom = activeRobot.capabilities.supportsInertials
-    ? updateCenterOfMass(inertialLinks, totalMass, overlays.totalComMesh)
-    : new THREE.Vector3();
-  const torques = computeGravityTorques(activeRobot, robotModel, inertialLinks);
-  const collisions = detectActiveCollisions();
-  overlays.updateToolLine(toolPosition);
-  updatePhysicsReadoutText({
-    elements,
-    robot: activeRobot,
-    toolFrameName: activeEndEffectorRuntime ? `${activeEndEffectorRuntime.definition.shortName} TCP` : getFrameName(activeRobot),
-    toolPosition,
-    toolQuaternion,
-    totalCom,
-    torques,
-    collisions,
-  });
-}
-
-function detectActiveCollisions() {
-  if (!activeRobot.capabilities.supportsCollision) {
-    return [];
-  }
-  const endEffectorMeshes = getActiveEndEffectorCollisionMeshes();
-  const activeCollisionMeshes = [...collisionMeshes, ...endEffectorMeshes];
-  const activeCollisionPairSet = buildActiveCollisionPairSet(activeCollisionMeshes.length);
-  return detectCollisions(activeCollisionMeshes, activeCollisionPairSet, materials.collision, materials.collisionHit);
-}
-
-function updateVisibility() {
-  setCollisionVisibility(collisionMeshes, elements.collisionToggle.checked);
-  setCollisionVisibility(endEffectorCollisionMeshes, elements.collisionToggle.checked);
-  setCollisionVisibility(parallelEndEffectorCollisionMeshes, shouldShowParallelEndEffectorCollisionOverlay());
-  setParallelGripCollisionVisibility(
-    activeEndEffectorRuntime?.parallelVisual ?? null,
-    shouldShowParallelEndEffectorCollisionOverlay(),
-  );
-  setInertialVisibility(inertialLinks, overlays.totalComMesh, elements.comToggle.checked);
-  overlays.setFrameVisibility(elements.framesToggle.checked);
-}
-
-function shouldShowParallelEndEffectorCollisionOverlay() {
-  if (!elements.collisionToggle.checked) {
-    return false;
-  }
-
-  return activeEndEffectorRuntime?.motionMode === 'parallel-pinch' && Boolean(activeEndEffectorRuntime.parallelVisual);
-}
-
-function getActiveEndEffectorCollisionMeshes() {
-  const runtime = activeEndEffectorRuntime;
-  if (!runtime) {
-    return [];
-  }
-
-  const rootLinkName = runtime.definition.rootLink;
-  const activeEndEffectorMeshes = endEffectorCollisionMeshes.filter(item => (
-    item.linkName !== rootLinkName &&
-    item.linkName !== 'world'
-  ));
-
-  if (runtime.motionMode !== 'parallel-pinch' || !runtime.parallelVisual) {
-    return activeEndEffectorMeshes;
-  }
-
-  const hiddenSourceLinkNames = runtime.parallelVisual.sourceLinkNames;
-  return [
-    ...activeEndEffectorMeshes.filter(item => !hiddenSourceLinkNames.has(item.linkName)),
-    ...parallelEndEffectorCollisionMeshes,
-  ];
-}
-
-function buildActiveCollisionPairSet(activeCollisionMeshCount: number) {
-  const activeCollisionPairSet = new Set(collisionPairSet);
-  for (let armIndex = 0; armIndex < collisionMeshes.length; armIndex += 1) {
-    for (let endEffectorIndex = collisionMeshes.length; endEffectorIndex < activeCollisionMeshCount; endEffectorIndex += 1) {
-      activeCollisionPairSet.add(`${armIndex}:${endEffectorIndex}`);
-    }
-  }
-  return activeCollisionPairSet;
-}
-
-async function loadActiveEndEffector(token: number) {
-  const definition = activeRobot.endEffectors[0] ?? null;
-  activeEndEffectorRuntime = null;
-  endEffectorCollisionMeshes = [];
-  parallelEndEffectorCollisionMeshes = [];
-  window.gripper = undefined;
-  updateEndEffectorControls();
-
-  if (!definition) {
-    elements.gripperState.textContent = 'None';
-    return;
-  }
-
-  elements.gripperState.textContent = 'Loading';
-  const gripperModel = await loadUrdfWithAssets(definition.urdfPath, robots, {
-    [definition.packageName]: definition.packagePath,
-  });
-  if (token !== loadToken || !robotModel) {
-    disposeObjectTree(gripperModel, protectedMaterials);
-    return;
-  }
-
-  const mountFrameName = getFrameName(activeRobot, definition.mountFrame);
-  const mountFrame = getRobotFrame(robotModel, mountFrameName);
-  if (!mountFrame) {
-    disposeObjectTree(gripperModel, protectedMaterials);
-    elements.gripperState.textContent = 'Mount missing';
-    updateEndEffectorControls();
-    return;
-  }
-
-  gripperModel.name = definition.name;
-  gripperModel.position.set(definition.origin.position.x, definition.origin.position.y, definition.origin.position.z);
-  gripperModel.rotation.set(definition.origin.rpy.x, definition.origin.rpy.y, definition.origin.rpy.z, 'XYZ');
-  mountFrame.add(gripperModel);
-
-  const contact = createParallelGripContact(definition, materials.graspObject);
-  if (contact) {
-    gripperModel.add(contact.object);
-  }
-
-  activeEndEffectorRuntime = createEndEffectorRuntime(definition, gripperModel, contact);
-  configureRobotMaterials(gripperModel, materials, elements.collisionToggle.checked);
-  setEndEffectorTarget(activeEndEffectorRuntime, definition.command.open);
-  applyEndEffectorRuntime(true);
-  installEndEffectorApi();
-  updateEndEffectorControls();
-}
-
-function updateEndEffectorControls() {
-  const definition = activeEndEffectorRuntime?.definition ?? activeRobot?.endEffectors[0] ?? null;
-  const value = activeEndEffectorRuntime?.target ?? definition?.command.open ?? 0;
-  endEffectorControlHandles = buildEndEffectorControls(
-    elements.gripperControls,
-    definition,
-    value,
-    value => setEndEffectorCommand(value),
-  );
-  renderIcons();
-  updateEndEffectorReadout();
-}
-
-function setEndEffectorCommand(value: number) {
-  if (!activeEndEffectorRuntime) {
-    return;
-  }
-  setEndEffectorTarget(activeEndEffectorRuntime, value);
-  updateEndEffectorReadout();
-}
-
-function applyEndEffectorRuntime(force: boolean, delta = 1 / 60) {
-  if (!activeEndEffectorRuntime) {
-    return false;
-  }
-  const moving = applyEndEffectorStep(activeEndEffectorRuntime, speedScale, delta, force);
+function applyEndEffector(force: boolean, delta = 1 / 60) {
+  const endEffector = runtime?.endEffector;
+  if (!endEffector) return false;
+  const moving = applyEndEffectorStep(endEffector, speedScale, delta, force);
   if (force || moving) {
+    physicsDirty = true;
     updateEndEffectorReadout();
   }
   return moving;
 }
 
-function updateEndEffectorReadout() {
-  if (!activeEndEffectorRuntime) {
-    if (!activeRobot?.endEffectors[0]) {
-      elements.gripperState.textContent = 'None';
-    }
-    return;
+function render(time: number) {
+  const delta = Math.min(Math.max((time - previousFrameTime) / 1000, 0), 0.05);
+  previousFrameTime = time;
+  if (activeRobot) {
+    const actionTarget = actionPlayer.update(activeRobot, delta);
+    if (actionTarget) jointState.setTargets(activeRobot, actionTarget, true);
+    applyJointState(false, delta);
+    applyEndEffector(false, delta);
   }
-
-  const { current } = activeEndEffectorRuntime;
-  const label = formatEndEffectorRuntimeState(activeEndEffectorRuntime);
-  elements.gripperState.textContent = label;
-  if (endEffectorControlHandles.slider) {
-    endEffectorControlHandles.slider.value = String(current);
+  robotScene.controls.update();
+  if (physicsDirty && time - lastPhysicsUpdate >= PHYSICS_UPDATE_INTERVAL_MS) {
+    updatePhysicsReadouts(time);
   }
-  if (endEffectorControlHandles.output) {
-    endEffectorControlHandles.output.textContent = label;
-  }
+  robotScene.renderer.render(robotScene.scene, robotScene.camera);
 }
 
-function installEndEffectorApi() {
-  if (!activeEndEffectorRuntime) {
-    window.gripper = undefined;
+function updatePhysicsReadouts(time: number, force = false) {
+  if (!runtime || (!force && !physicsDirty)) return;
+  const tool = runtimeModule.getRuntimeToolFrame(runtime);
+  if (!tool) {
+    elements.poseHud.textContent = `${getFrameName(activeRobot)} frame unavailable`;
     return;
   }
+  performance.mark('robot-workbench:physics-update');
+  tool.getWorldPosition(toolPosition);
+  tool.getWorldQuaternion(toolQuaternion);
+  overlays.toolFrame.position.copy(toolPosition);
+  overlays.toolFrame.quaternion.copy(toolQuaternion);
+  overlays.updateToolLine(toolPosition);
 
-  window.gripper = {
-    open: () => setEndEffectorCommand(activeEndEffectorRuntime?.definition.command.open ?? 0),
-    close: () => setEndEffectorCommand(activeEndEffectorRuntime?.definition.command.close ?? 0),
-    set: value => setEndEffectorCommand(value),
-    get: () => activeEndEffectorRuntime?.current ?? null,
-    getOpening: () => (activeEndEffectorRuntime ? getEndEffectorOpening(activeEndEffectorRuntime) : null),
-    getMotionMode: () => activeEndEffectorRuntime?.motionMode ?? null,
-    setMotionMode: mode => {
-      if (!activeEndEffectorRuntime) {
-        return;
-      }
-      setEndEffectorMotionMode(activeEndEffectorRuntime, mode);
-      updateVisibility();
-      updateEndEffectorReadout();
-    },
-    setContactEnabled: (enabled, showObject = enabled) => {
-      if (activeEndEffectorRuntime) {
-        setEndEffectorContactPreview(activeEndEffectorRuntime, enabled, showObject);
-        updateEndEffectorReadout();
-      }
-    },
-  };
+  const totalCom = activeRobot.capabilities.supportsInertials
+    ? updateCenterOfMass(runtime.inertialLinks, runtime.totalMass, overlays.totalComMesh)
+    : emptyCom.set(0, 0, 0);
+  const collisions = activeRobot.capabilities.supportsCollision
+    ? runtimeModule.detectRuntimeCollisions(runtime, materials.collision, materials.collisionHit)
+    : [];
+  updatePhysicsReadoutText({
+    elements,
+    toolFrameName: runtime.endEffector ? `${runtime.endEffector.definition.shortName} TCP` : getFrameName(activeRobot),
+    toolPosition,
+    toolQuaternion,
+    totalCom,
+    collisions,
+  });
+  physicsDirty = false;
+  lastPhysicsUpdate = time;
 }
 
-function getEndEffectorLinkNames() {
-  const linkNames = new Set<string>();
-  if (!activeEndEffectorRuntime) {
-    return linkNames;
+function updateVisibility() {
+  if (runtime) {
+    runtimeModule.setRuntimeCollisionVisibility(runtime, elements.collisionToggle.checked);
+    setInertialVisibility(runtime.inertialLinks, overlays.totalComMesh, elements.comToggle.checked);
+  } else {
+    overlays.totalComMesh.visible = false;
   }
+  overlays.setFrameVisibility(elements.framesToggle.checked);
+}
 
-  for (const linkName of Object.keys(activeEndEffectorRuntime.model.links)) {
-    linkNames.add(linkName);
-  }
-  return linkNames;
+function setText(node: Node, value: string) {
+  if (node.textContent !== value) node.textContent = value;
 }

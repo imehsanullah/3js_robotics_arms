@@ -1,42 +1,52 @@
 import type {
-  JointName,
+  EndEffectorCommandSpec,
   JointSpec,
   JointValues,
-  EndEffectorContactObjectDefinition,
-  EndEffectorGripMotionMode,
-  EndEffectorParallelGripDefinition,
-  EndEffectorParallelGripVisualDefinition,
-  RobotEndEffectorDefinition,
   RobotActionDefinition,
   RobotCapabilities,
-  RobotCollisionMetadata,
   RobotDefinition,
+  RobotEndEffectorDefinition,
   RobotGroupDefinition,
   RobotRegistry,
+  Vector3Tuple,
 } from './types';
 
 interface RobotIndexConfig {
   robots: string[];
 }
 
+const canonicalPresets = ['zero', 'ready', 'folded', 'reach'] as const;
 const defaultCapabilities: RobotCapabilities = {
-  fixedBase: true,
   supportsCollision: false,
   supportsInertials: false,
-  supportsGravityTorques: false,
   supportsIk: false,
-  supportsActions: false,
 };
 
-export async function loadRobotRegistry(indexPath = '/robots/index.json'): Promise<RobotRegistry> {
+export async function loadRobotRegistry(indexPath = '/robots/index.json', basePath = '/'): Promise<RobotRegistry> {
   const index = await fetchJson<RobotIndexConfig>(indexPath);
   if (!Array.isArray(index.robots) || index.robots.length === 0) {
     throw new Error(`Robot registry index must list at least one robot: ${indexPath}`);
   }
+  if (index.robots.some(path => typeof path !== 'string' || path.length === 0)) {
+    throw new Error(`Robot registry paths must be non-empty strings: ${indexPath}`);
+  }
 
   const robots = await Promise.all(
-    index.robots.map(async configPath => normalizeRobotDefinition(await fetchJson<unknown>(resolvePath(indexPath, configPath)), configPath)),
+    index.robots.map(async configPath =>
+      normalizeRobotDefinition(
+        await fetchJson<unknown>(resolvePath(indexPath, configPath, basePath)),
+        configPath,
+        basePath,
+      ),
+    ),
   );
+  const ids = new Set<string>();
+  for (const robot of robots) {
+    if (ids.has(robot.id)) {
+      throw new Error(`Duplicate robot ID: ${robot.id}`);
+    }
+    ids.add(robot.id);
+  }
 
   const robotById = Object.fromEntries(robots.map(robot => [robot.id, robot])) as Record<string, RobotDefinition>;
   return { robots, robotById };
@@ -50,368 +60,287 @@ async function fetchJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function resolvePath(indexPath: string, configPath: string) {
+function resolvePath(indexPath: string, configPath: string, basePath: string) {
   if (configPath.startsWith('/')) {
-    return configPath;
+    return resolveFromBase(configPath, basePath);
   }
-  const basePath = indexPath.slice(0, indexPath.lastIndexOf('/') + 1);
-  return `${basePath}${configPath}`;
+  return `${indexPath.slice(0, indexPath.lastIndexOf('/') + 1)}${configPath}`;
 }
 
-function normalizeRobotDefinition(raw: unknown, sourcePath: string): RobotDefinition {
-  const record = asRecord(raw, sourcePath);
-  const id = requiredString(record, 'id', sourcePath);
-  const jointSpecs = requiredArray(record, 'jointSpecs', sourcePath).map((item, index) =>
-    normalizeJointSpec(item, `${sourcePath}.jointSpecs[${index}]`),
-  );
-  const jointNames = new Set(jointSpecs.map(spec => spec.name));
-  const rootLink = requiredString(record, 'rootLink', sourcePath);
-  const toolFrames = normalizeStringRecord(record.toolFrames, `${sourcePath}.toolFrames`);
-  const normalizedToolFrames = Object.keys(toolFrames).length > 0 ? toolFrames : { root: rootLink };
-  const configuredDefaultToolFrame = optionalString(record.defaultToolFrame);
-  const firstToolFrame = Object.keys(normalizedToolFrames)[0];
-  const defaultToolFrame =
-    configuredDefaultToolFrame && normalizedToolFrames[configuredDefaultToolFrame]
-      ? configuredDefaultToolFrame
-      : firstToolFrame;
-  const groups = normalizeGroups(record.groups, jointNames, sourcePath);
-  const firstGroup = Object.keys(groups)[0];
-  if (!firstGroup) {
-    throw new Error(`Robot config must define at least one group: ${sourcePath}`);
+function resolveFromBase(path: string, basePath: string) {
+  if (!path.startsWith('/')) {
+    return path;
   }
-  const configuredDefaultGroup = optionalString(record.defaultGroup);
-  const defaultGroup = configuredDefaultGroup && groups[configuredDefaultGroup] ? configuredDefaultGroup : firstGroup;
+  return `${basePath.replace(/\/$/, '')}${path}`;
+}
 
-  const capabilities = normalizeCapabilities(record.capabilities);
-  const actions = normalizeActions(record.actions, jointNames, `${sourcePath}.actions`);
+function normalizeRobotDefinition(raw: unknown, sourcePath: string, basePath: string): RobotDefinition {
+  const record = asRecord(raw, sourcePath);
+  const jointSpecs = normalizeJointSpecs(record.jointSpecs, `${sourcePath}.jointSpecs`);
+  const specByName = new Map(jointSpecs.map(spec => [spec.name, spec]));
+  const groups = normalizeGroups(record.groups, specByName, `${sourcePath}.groups`);
+  const defaultGroup = requiredString(record, 'defaultGroup', sourcePath);
+  if (!groups[defaultGroup]) {
+    throw new Error(`Unknown defaultGroup ${defaultGroup}: ${sourcePath}`);
+  }
+
+  const toolFrames = normalizeStringRecord(record.toolFrames, `${sourcePath}.toolFrames`);
+  if (Object.keys(toolFrames).length === 0) {
+    throw new Error(`Robot config must define at least one tool frame: ${sourcePath}.toolFrames`);
+  }
+  const defaultToolFrame = requiredString(record, 'defaultToolFrame', sourcePath);
+  if (!toolFrames[defaultToolFrame]) {
+    throw new Error(`Unknown defaultToolFrame ${defaultToolFrame}: ${sourcePath}`);
+  }
+
+  const presets = normalizePresets(record.presets, specByName, `${sourcePath}.presets`);
+  const actions = normalizeActions(record.actions, specByName, `${sourcePath}.actions`);
+  const defaultAction = optionalString(record.defaultAction, `${sourcePath}.defaultAction`);
+  if (defaultAction && !actions[defaultAction]) {
+    throw new Error(`Unknown defaultAction ${defaultAction}: ${sourcePath}`);
+  }
+  if (Object.keys(actions).length > 0 && !defaultAction) {
+    throw new Error(`defaultAction is required when actions are configured: ${sourcePath}`);
+  }
 
   return {
-    id,
+    id: requiredString(record, 'id', sourcePath),
     name: requiredString(record, 'name', sourcePath),
     shortName: requiredString(record, 'shortName', sourcePath),
     description: requiredString(record, 'description', sourcePath),
     packageName: requiredString(record, 'packageName', sourcePath),
-    packagePath: requiredString(record, 'packagePath', sourcePath),
-    urdfPath: requiredString(record, 'urdfPath', sourcePath),
-    rootLink,
+    packagePath: resolveFromBase(requiredString(record, 'packagePath', sourcePath), basePath),
+    urdfPath: resolveFromBase(requiredString(record, 'urdfPath', sourcePath), basePath),
     jointSpecs,
     groups,
     defaultGroup,
-    toolFrames: normalizedToolFrames,
+    toolFrames,
     defaultToolFrame,
-    linkChain: optionalStringArray(record.linkChain, `${sourcePath}.linkChain`),
-    collision: normalizeCollisionMetadata(record.collision, record.linkChain, `${sourcePath}.collision`),
-    downstreamLinks: normalizeStringArrayRecord(record.downstreamLinks, `${sourcePath}.downstreamLinks`),
-    endEffectors: normalizeEndEffectors(record.endEffectors, defaultToolFrame, `${sourcePath}.endEffectors`),
-    presets: normalizeJointValueMaps(record.presets, jointNames, `${sourcePath}.presets`),
+    endEffector: normalizeEndEffector(record.endEffector, toolFrames, `${sourcePath}.endEffector`, basePath),
+    presets,
     actions,
-    defaultAction: optionalString(record.defaultAction),
-    capabilities: {
-      ...capabilities,
-      supportsActions: capabilities.supportsActions || Object.keys(actions).length > 0,
-    },
+    defaultAction,
+    capabilities: normalizeCapabilities(record.capabilities, `${sourcePath}.capabilities`),
     initialTarget: normalizeVector(record.initialTarget, `${sourcePath}.initialTarget`),
     camera: normalizeCamera(record.camera, `${sourcePath}.camera`),
   };
 }
 
-function normalizeCollisionMetadata(raw: unknown, fallbackLinkChain: unknown, sourcePath: string): RobotCollisionMetadata {
-  if (raw === undefined) {
-    const linkChain = optionalStringArray(fallbackLinkChain, `${sourcePath}.fallbackLinkChain`);
-    return {
-      adjacentLinkChains: linkChain.length > 0 ? [linkChain] : [],
-      disabledPairs: [],
-    };
+function normalizeJointSpecs(raw: unknown, sourcePath: string) {
+  const values = asArray(raw, sourcePath);
+  if (values.length === 0) {
+    throw new Error(`Robot must define at least one joint: ${sourcePath}`);
   }
-
-  const collisionRaw = asRecord(raw, sourcePath);
-  const chainsRaw = collisionRaw.adjacentLinkChains;
-  const adjacentLinkChains =
-    chainsRaw === undefined
-      ? []
-      : requiredArray(collisionRaw, 'adjacentLinkChains', sourcePath).map((item, index) =>
-          asStringArray(item, `${sourcePath}.adjacentLinkChains[${index}]`),
-        );
-
-  const disabledPairsRaw = collisionRaw.disabledPairs;
-  const disabledPairs =
-    disabledPairsRaw === undefined
-      ? []
-      : requiredArray(collisionRaw, 'disabledPairs', sourcePath).map((item, index) => {
-          const pair = asStringArray(item, `${sourcePath}.disabledPairs[${index}]`);
-          if (pair.length !== 2) {
-            throw new Error(`Collision disabled pair must contain exactly two links: ${sourcePath}.disabledPairs[${index}]`);
-          }
-          return [pair[0], pair[1]] as [string, string];
-        });
-
-  return { adjacentLinkChains, disabledPairs };
-}
-
-function normalizeEndEffectors(
-  raw: unknown,
-  defaultMountFrame: string,
-  sourcePath: string,
-): RobotEndEffectorDefinition[] {
-  if (raw === undefined) {
-    return [];
-  }
-
-  return asArray(raw, sourcePath).map((item, index) => {
-    const endEffectorRaw = asRecord(item, `${sourcePath}[${index}]`);
-    return {
-      id: requiredString(endEffectorRaw, 'id', `${sourcePath}[${index}]`),
-      name: requiredString(endEffectorRaw, 'name', `${sourcePath}[${index}]`),
-      shortName: requiredString(endEffectorRaw, 'shortName', `${sourcePath}[${index}]`),
-      packageName: requiredString(endEffectorRaw, 'packageName', `${sourcePath}[${index}]`),
-      packagePath: requiredString(endEffectorRaw, 'packagePath', `${sourcePath}[${index}]`),
-      urdfPath: requiredString(endEffectorRaw, 'urdfPath', `${sourcePath}[${index}]`),
-      rootLink: requiredString(endEffectorRaw, 'rootLink', `${sourcePath}[${index}]`),
-      mountFrame: optionalString(endEffectorRaw.mountFrame) ?? defaultMountFrame,
-      origin: normalizeTransform(endEffectorRaw.origin, `${sourcePath}[${index}].origin`),
-      tcpOffset: normalizeOptionalVector(endEffectorRaw.tcpOffset, `${sourcePath}[${index}].tcpOffset`),
-      command: normalizeEndEffectorCommand(endEffectorRaw.command, `${sourcePath}[${index}].command`),
-      parallelGrip: normalizeParallelGrip(endEffectorRaw.parallelGrip, `${sourcePath}[${index}].parallelGrip`),
+  const names = new Set<string>();
+  return values.map((rawSpec, index): JointSpec => {
+    const path = `${sourcePath}[${index}]`;
+    const record = asRecord(rawSpec, path);
+    const spec = {
+      name: requiredString(record, 'name', path),
+      label: requiredString(record, 'label', path),
+      lower: requiredNumber(record, 'lower', path),
+      upper: requiredNumber(record, 'upper', path),
+      velocity: requiredNumber(record, 'velocity', path),
+      effort: requiredNumber(record, 'effort', path),
     };
+    if (names.has(spec.name)) {
+      throw new Error(`Duplicate joint ${spec.name}: ${sourcePath}`);
+    }
+    names.add(spec.name);
+    if (spec.lower >= spec.upper) {
+      throw new Error(`Joint lower bound must be below upper bound: ${path}`);
+    }
+    if (spec.velocity <= 0) {
+      throw new Error(`Joint velocity must be positive: ${path}`);
+    }
+    if (spec.effort <= 0) {
+      throw new Error(`Joint effort must be positive: ${path}`);
+    }
+    return spec;
   });
 }
 
-function normalizeEndEffectorCommand(raw: unknown, sourcePath: string) {
-  const record = asRecord(raw, sourcePath);
-  return {
-    jointName: requiredString(record, 'jointName', sourcePath),
-    label: optionalString(record.label) ?? 'Grip',
-    lower: requiredNumber(record, 'lower', sourcePath),
-    upper: requiredNumber(record, 'upper', sourcePath),
-    open: requiredNumber(record, 'open', sourcePath),
-    close: requiredNumber(record, 'close', sourcePath),
-    velocity: requiredNumber(record, 'velocity', sourcePath),
-  };
-}
-
-function normalizeParallelGrip(raw: unknown, sourcePath: string): EndEffectorParallelGripDefinition | undefined {
-  if (raw === undefined) {
-    return undefined;
-  }
-
-  const record = asRecord(raw, sourcePath);
-  const motionMode = normalizeGripMotionMode(record.motionMode, `${sourcePath}.motionMode`);
-  return {
-    motionMode,
-    openWidth: requiredNumber(record, 'openWidth', sourcePath),
-    closedWidth: requiredNumber(record, 'closedWidth', sourcePath),
-    contactEnabled: optionalBoolean(record.contactEnabled) ?? motionMode !== 'parallel-pinch',
-    contactWidth: requiredNumber(record, 'contactWidth', sourcePath),
-    showContactObject: optionalBoolean(record.showContactObject) ?? false,
-    object: normalizeContactObject(record.object, `${sourcePath}.object`),
-    visual: normalizeParallelGripVisual(record.visual, `${sourcePath}.visual`),
-  };
-}
-
-function normalizeGripMotionMode(raw: unknown, sourcePath: string): EndEffectorGripMotionMode {
-  if (raw === undefined) {
-    return 'adaptive-linkage';
-  }
-  if (raw === 'adaptive-linkage' || raw === 'parallel-pinch') {
-    return raw;
-  }
-  throw new Error(`Expected grip motion mode adaptive-linkage or parallel-pinch: ${sourcePath}`);
-}
-
-function normalizeContactObject(raw: unknown, sourcePath: string): EndEffectorContactObjectDefinition {
-  const record = asRecord(raw, sourcePath);
-  const shape = requiredString(record, 'shape', sourcePath);
-  if (shape !== 'box' && shape !== 'cylinder') {
-    throw new Error(`Expected contact object shape to be box or cylinder: ${sourcePath}.shape`);
-  }
-
-  return {
-    shape,
-    position: normalizeOptionalVector(record.position, `${sourcePath}.position`),
-    rpy: normalizeOptionalVector(record.rpy, `${sourcePath}.rpy`),
-    size: normalizeVector(record.size, `${sourcePath}.size`),
-  };
-}
-
-function normalizeParallelGripVisual(raw: unknown, sourcePath: string): EndEffectorParallelGripVisualDefinition {
-  if (raw === undefined) {
-    return {
-      leftFingerLink: 'left_inner_finger',
-      rightFingerLink: 'right_inner_finger',
-      leftPadLink: 'left_inner_finger_pad',
-      rightPadLink: 'right_inner_finger_pad',
-    };
-  }
-
-  const record = asRecord(raw, sourcePath);
-  return {
-    leftFingerLink: requiredString(record, 'leftFingerLink', sourcePath),
-    rightFingerLink: requiredString(record, 'rightFingerLink', sourcePath),
-    leftPadLink: requiredString(record, 'leftPadLink', sourcePath),
-    rightPadLink: requiredString(record, 'rightPadLink', sourcePath),
-  };
-}
-
-function normalizeTransform(raw: unknown, sourcePath: string) {
-  if (raw === undefined) {
-    return {
-      position: zeroVector(),
-      rpy: zeroVector(),
-    };
-  }
-
-  const record = asRecord(raw, sourcePath);
-  return {
-    position: normalizeOptionalVector(record.position, `${sourcePath}.position`),
-    rpy: normalizeOptionalVector(record.rpy, `${sourcePath}.rpy`),
-  };
-}
-
-function normalizeJointSpec(raw: unknown, sourcePath: string): JointSpec {
-  const record = asRecord(raw, sourcePath);
-  return {
-    name: requiredString(record, 'name', sourcePath),
-    label: requiredString(record, 'label', sourcePath),
-    lower: requiredNumber(record, 'lower', sourcePath),
-    upper: requiredNumber(record, 'upper', sourcePath),
-    velocity: requiredNumber(record, 'velocity', sourcePath),
-    effort: requiredNumber(record, 'effort', sourcePath),
-  };
-}
-
-function normalizeGroups(raw: unknown, jointNames: Set<string>, sourcePath: string) {
-  const groupsRaw = asRecord(raw, `${sourcePath}.groups`);
+function normalizeGroups(raw: unknown, specs: Map<string, JointSpec>, sourcePath: string) {
+  const groupsRaw = asRecord(raw, sourcePath);
   const groups: Record<string, RobotGroupDefinition> = {};
-
-  for (const [key, value] of Object.entries(groupsRaw)) {
-    const groupRaw = asRecord(value, `${sourcePath}.groups.${key}`);
-    const name = optionalString(groupRaw.name) ?? key;
-    const groupJointNames = requiredStringArray(groupRaw, 'jointNames', `${sourcePath}.groups.${key}`);
-    for (const jointName of groupJointNames) {
-      if (!jointNames.has(jointName)) {
+  for (const [name, value] of Object.entries(groupsRaw)) {
+    const record = asRecord(value, `${sourcePath}.${name}`);
+    const jointNames = requiredStringArray(record, 'jointNames', `${sourcePath}.${name}`);
+    if (jointNames.length === 0 || new Set(jointNames).size !== jointNames.length) {
+      throw new Error(`Group ${name} must contain unique joints: ${sourcePath}`);
+    }
+    for (const jointName of jointNames) {
+      if (!specs.has(jointName)) {
         throw new Error(`Group ${name} references unknown joint ${jointName}: ${sourcePath}`);
       }
     }
-    groups[name] = {
-      name,
-      label: optionalString(groupRaw.label) ?? name,
-      jointNames: groupJointNames,
-      defaultFrame: optionalString(groupRaw.defaultFrame),
-      supportsIk: optionalBoolean(groupRaw.supportsIk) ?? Boolean(groupRaw.defaultFrame),
-    };
+    groups[name] = { jointNames };
   }
-
+  if (Object.keys(groups).length === 0) {
+    throw new Error(`Robot config must define at least one group: ${sourcePath}`);
+  }
   return groups;
 }
 
-function normalizeActions(raw: unknown, jointNames: Set<string>, sourcePath: string) {
+function normalizePresets(raw: unknown, specs: Map<string, JointSpec>, sourcePath: string) {
+  const presetsRaw = asRecord(raw, sourcePath);
+  for (const preset of canonicalPresets) {
+    if (!(preset in presetsRaw)) {
+      throw new Error(`Missing canonical ${preset} preset: ${sourcePath}`);
+    }
+  }
+  const presets: Record<string, JointValues> = {};
+  for (const [name, value] of Object.entries(presetsRaw)) {
+    presets[name] = normalizeJointValues(value, specs, `${sourcePath}.${name}`, true) as JointValues;
+  }
+  return presets;
+}
+
+function normalizeActions(raw: unknown, specs: Map<string, JointSpec>, sourcePath: string) {
   if (raw === undefined) {
     return {};
   }
-
   const actionsRaw = asRecord(raw, sourcePath);
   const actions: Record<string, RobotActionDefinition> = {};
-  for (const [key, value] of Object.entries(actionsRaw)) {
-    const actionRaw = asRecord(value, `${sourcePath}.${key}`);
-    const name = optionalString(actionRaw.name) ?? key;
-    const keyframes = requiredArray(actionRaw, 'keyframes', `${sourcePath}.${key}`).map((item, index) => {
-      const keyframe = asRecord(item, `${sourcePath}.${key}.keyframes[${index}]`);
-      return {
-        time: requiredNumber(keyframe, 'time', `${sourcePath}.${key}.keyframes[${index}]`),
-        joints: normalizeJointValues(keyframe.joints, jointNames, `${sourcePath}.${key}.keyframes[${index}].joints`),
-      };
-    });
+  for (const [name, value] of Object.entries(actionsRaw)) {
+    const path = `${sourcePath}.${name}`;
+    const actionRaw = asRecord(value, path);
+    const duration = requiredNumber(actionRaw, 'duration', path);
+    if (duration <= 0) {
+      throw new Error(`Action duration must be positive: ${path}`);
+    }
+    const keyframes = requiredArray(actionRaw, 'keyframes', path)
+      .map((item, index) => {
+        const keyframePath = `${path}.keyframes[${index}]`;
+        const keyframe = asRecord(item, keyframePath);
+        return {
+          time: requiredNumber(keyframe, 'time', keyframePath),
+          joints: normalizeJointValues(keyframe.joints, specs, `${keyframePath}.joints`, false),
+        };
+      })
+      .sort((left, right) => left.time - right.time);
+    if (keyframes.length === 0) {
+      throw new Error(`Action must define at least one keyframe: ${path}`);
+    }
+    for (let index = 0; index < keyframes.length; index += 1) {
+      const time = keyframes[index].time;
+      if (time < 0 || time > duration || (index > 0 && time <= keyframes[index - 1].time)) {
+        throw new Error(`Invalid keyframe time ${time}: ${path}`);
+      }
+    }
     actions[name] = {
-      name,
-      label: optionalString(actionRaw.label) ?? name,
-      duration: requiredNumber(actionRaw, 'duration', `${sourcePath}.${key}`),
-      loop: optionalBoolean(actionRaw.loop),
+      label: optionalString(actionRaw.label, `${path}.label`) ?? name,
+      duration,
+      loop: optionalBoolean(actionRaw.loop, `${path}.loop`),
       keyframes,
     };
   }
   return actions;
 }
 
-function normalizeCapabilities(raw: unknown): RobotCapabilities {
-  if (raw === undefined) {
-    return defaultCapabilities;
-  }
-  const capabilitiesRaw = asRecord(raw, 'capabilities');
-  return {
-    fixedBase: optionalBoolean(capabilitiesRaw.fixedBase) ?? defaultCapabilities.fixedBase,
-    supportsCollision: optionalBoolean(capabilitiesRaw.supportsCollision) ?? defaultCapabilities.supportsCollision,
-    supportsInertials: optionalBoolean(capabilitiesRaw.supportsInertials) ?? defaultCapabilities.supportsInertials,
-    supportsGravityTorques:
-      optionalBoolean(capabilitiesRaw.supportsGravityTorques) ?? defaultCapabilities.supportsGravityTorques,
-    supportsIk: optionalBoolean(capabilitiesRaw.supportsIk) ?? defaultCapabilities.supportsIk,
-    supportsActions: optionalBoolean(capabilitiesRaw.supportsActions) ?? defaultCapabilities.supportsActions,
-  };
-}
-
-function normalizeJointValueMaps(raw: unknown, jointNames: Set<string>, sourcePath: string) {
-  const mapsRaw = asRecord(raw, sourcePath);
-  const maps: Record<string, JointValues> = {};
-  for (const [name, value] of Object.entries(mapsRaw)) {
-    maps[name] = normalizeJointValues(value, jointNames, `${sourcePath}.${name}`) as JointValues;
-  }
-  return maps;
-}
-
-function normalizeJointValues(raw: unknown, jointNames: Set<string>, sourcePath: string) {
+function normalizeJointValues(
+  raw: unknown,
+  specs: Map<string, JointSpec>,
+  sourcePath: string,
+  requireAll: boolean,
+) {
   const valuesRaw = asRecord(raw, sourcePath);
   const values: Partial<JointValues> = {};
-  for (const [jointName, value] of Object.entries(valuesRaw)) {
-    if (!jointNames.has(jointName)) {
+  for (const [jointName, rawValue] of Object.entries(valuesRaw)) {
+    const spec = specs.get(jointName);
+    if (!spec) {
       throw new Error(`Unknown joint ${jointName}: ${sourcePath}`);
     }
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new Error(`Joint value must be finite number for ${jointName}: ${sourcePath}`);
+    if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+      throw new Error(`Joint value must be finite for ${jointName}: ${sourcePath}`);
     }
-    values[jointName as JointName] = value;
+    if (rawValue < spec.lower || rawValue > spec.upper) {
+      throw new Error(`Joint value outside valid range for ${jointName}: ${sourcePath}`);
+    }
+    values[jointName] = rawValue;
+  }
+  if (requireAll) {
+    for (const jointName of specs.keys()) {
+      if (!(jointName in values)) {
+        throw new Error(`Preset is missing joint ${jointName}: ${sourcePath}`);
+      }
+    }
   }
   return values;
 }
 
-function normalizeStringRecord(raw: unknown, sourcePath: string) {
+function normalizeEndEffector(
+  raw: unknown,
+  toolFrames: Record<string, string>,
+  sourcePath: string,
+  basePath: string,
+): RobotEndEffectorDefinition | undefined {
   if (raw === undefined) {
-    return {};
+    return undefined;
   }
   const record = asRecord(raw, sourcePath);
-  return Object.fromEntries(
-    Object.entries(record).map(([key, value]) => {
-      if (typeof value !== 'string') {
-        throw new Error(`Expected string value for ${sourcePath}.${key}`);
-      }
-      return [key, value];
-    }),
-  ) as Record<string, string>;
-}
-
-function normalizeStringArrayRecord(raw: unknown, sourcePath: string) {
-  if (raw === undefined) {
-    return {};
+  const mountFrame = requiredString(record, 'mountFrame', sourcePath);
+  if (!toolFrames[mountFrame]) {
+    throw new Error(`Unknown end-effector mountFrame ${mountFrame}: ${sourcePath}`);
   }
-  const record = asRecord(raw, sourcePath);
-  return Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [key, asStringArray(value, `${sourcePath}.${key}`)]),
-  ) as Record<string, string[]>;
-}
-
-function normalizeVector(raw: unknown, sourcePath: string) {
-  const record = asRecord(raw, sourcePath);
   return {
-    x: requiredNumber(record, 'x', sourcePath),
-    y: requiredNumber(record, 'y', sourcePath),
-    z: requiredNumber(record, 'z', sourcePath),
+    id: requiredString(record, 'id', sourcePath),
+    name: requiredString(record, 'name', sourcePath),
+    shortName: requiredString(record, 'shortName', sourcePath),
+    packageName: requiredString(record, 'packageName', sourcePath),
+    packagePath: resolveFromBase(requiredString(record, 'packagePath', sourcePath), basePath),
+    urdfPath: resolveFromBase(requiredString(record, 'urdfPath', sourcePath), basePath),
+    mountFrame,
+    origin: normalizeTransform(record.origin, `${sourcePath}.origin`),
+    tcpOffset: normalizeOptionalVector(record.tcpOffset, `${sourcePath}.tcpOffset`),
+    command: normalizeEndEffectorCommand(record.command, `${sourcePath}.command`),
   };
 }
 
-function normalizeOptionalVector(raw: unknown, sourcePath: string) {
-  return raw === undefined ? zeroVector() : normalizeVector(raw, sourcePath);
+function normalizeEndEffectorCommand(raw: unknown, sourcePath: string): EndEffectorCommandSpec {
+  const record = asRecord(raw, sourcePath);
+  const command = {
+    jointName: requiredString(record, 'jointName', sourcePath),
+    label: optionalString(record.label, `${sourcePath}.label`) ?? 'Grip',
+    lower: requiredNumber(record, 'lower', sourcePath),
+    upper: requiredNumber(record, 'upper', sourcePath),
+    open: requiredNumber(record, 'open', sourcePath),
+    close: requiredNumber(record, 'close', sourcePath),
+    velocity: requiredNumber(record, 'velocity', sourcePath),
+  };
+  if (command.lower >= command.upper) {
+    throw new Error(`End-effector command lower bound must be below upper bound: ${sourcePath}`);
+  }
+  if (command.velocity <= 0) {
+    throw new Error(`End-effector command velocity must be positive: ${sourcePath}`);
+  }
+  if ([command.open, command.close].some(value => value < command.lower || value > command.upper)) {
+    throw new Error(`End-effector open/close command must be inside its range: ${sourcePath}`);
+  }
+  return command;
 }
 
-function zeroVector() {
-  return { x: 0, y: 0, z: 0 };
+function normalizeCapabilities(raw: unknown, sourcePath: string): RobotCapabilities {
+  if (raw === undefined) {
+    return { ...defaultCapabilities };
+  }
+  const record = asRecord(raw, sourcePath);
+  return {
+    supportsCollision: optionalBoolean(record.supportsCollision, `${sourcePath}.supportsCollision`) ?? false,
+    supportsInertials: optionalBoolean(record.supportsInertials, `${sourcePath}.supportsInertials`) ?? false,
+    supportsIk: optionalBoolean(record.supportsIk, `${sourcePath}.supportsIk`) ?? false,
+  };
+}
+
+function normalizeTransform(raw: unknown, sourcePath: string) {
+  if (raw === undefined) {
+    return { position: zeroVector(), rpy: zeroVector() };
+  }
+  const record = asRecord(raw, sourcePath);
+  return {
+    position: normalizeOptionalVector(record.position, `${sourcePath}.position`),
+    rpy: normalizeOptionalVector(record.rpy, `${sourcePath}.rpy`),
+  };
 }
 
 function normalizeCamera(raw: unknown, sourcePath: string) {
@@ -422,30 +351,52 @@ function normalizeCamera(raw: unknown, sourcePath: string) {
   };
 }
 
+function normalizeStringRecord(raw: unknown, sourcePath: string) {
+  const record = asRecord(raw, sourcePath);
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => {
+      if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(`Expected non-empty string: ${sourcePath}.${key}`);
+      }
+      return [key, value];
+    }),
+  ) as Record<string, string>;
+}
+
+function normalizeOptionalVector(raw: unknown, sourcePath: string) {
+  return raw === undefined ? zeroVector() : normalizeVector(raw, sourcePath);
+}
+
+function normalizeVector(raw: unknown, sourcePath: string): Vector3Tuple {
+  const record = asRecord(raw, sourcePath);
+  return {
+    x: requiredNumber(record, 'x', sourcePath),
+    y: requiredNumber(record, 'y', sourcePath),
+    z: requiredNumber(record, 'z', sourcePath),
+  };
+}
+
+function zeroVector(): Vector3Tuple {
+  return { x: 0, y: 0, z: 0 };
+}
+
 function requiredArray(record: Record<string, unknown>, key: string, sourcePath: string) {
   return asArray(record[key], `${sourcePath}.${key}`);
 }
 
-function asArray(raw: unknown, sourcePath: string) {
+function asArray(raw: unknown, sourcePath: string): unknown[] {
   if (!Array.isArray(raw)) {
-    throw new Error(`Expected array ${sourcePath}`);
+    throw new Error(`Expected array: ${sourcePath}`);
   }
   return raw;
 }
 
 function requiredStringArray(record: Record<string, unknown>, key: string, sourcePath: string) {
-  return asStringArray(record[key], `${sourcePath}.${key}`);
-}
-
-function optionalStringArray(raw: unknown, sourcePath: string) {
-  return raw === undefined ? [] : asStringArray(raw, sourcePath);
-}
-
-function asStringArray(raw: unknown, sourcePath: string) {
-  if (!Array.isArray(raw) || raw.some(item => typeof item !== 'string')) {
-    throw new Error(`Expected string array: ${sourcePath}`);
+  const raw = record[key];
+  if (!Array.isArray(raw) || raw.some(value => typeof value !== 'string' || value.length === 0)) {
+    throw new Error(`Expected string array: ${sourcePath}.${key}`);
   }
-  return raw;
+  return raw as string[];
 }
 
 function requiredString(record: Record<string, unknown>, key: string, sourcePath: string) {
@@ -456,8 +407,12 @@ function requiredString(record: Record<string, unknown>, key: string, sourcePath
   return value;
 }
 
-function optionalString(raw: unknown) {
-  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+function optionalString(raw: unknown, sourcePath: string) {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw new Error(`Expected non-empty string ${sourcePath}`);
+  }
+  return raw;
 }
 
 function requiredNumber(record: Record<string, unknown>, key: string, sourcePath: string) {
@@ -468,8 +423,12 @@ function requiredNumber(record: Record<string, unknown>, key: string, sourcePath
   return value;
 }
 
-function optionalBoolean(raw: unknown) {
-  return typeof raw === 'boolean' ? raw : undefined;
+function optionalBoolean(raw: unknown, sourcePath: string) {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'boolean') {
+    throw new Error(`Expected boolean ${sourcePath}`);
+  }
+  return raw;
 }
 
 function asRecord(raw: unknown, sourcePath: string): Record<string, unknown> {

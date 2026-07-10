@@ -15,7 +15,12 @@ export interface JointStateStore {
     values: Partial<Record<JointName, number>>,
     options: { syncTarget: boolean; updateControls: boolean },
   ): void;
-  applyStep(robot: RobotDefinition, speedScale: number, delta: number, force?: boolean): boolean;
+  applyStep(
+    robot: RobotDefinition,
+    speedScale: number,
+    delta: number,
+    force?: boolean,
+  ): { changed: boolean; moving: boolean };
 }
 
 export function createJointStateStore(jointSliders: SliderMap, jointOutputs: OutputMap): JointStateStore {
@@ -48,7 +53,7 @@ export function createJointStateStore(jointSliders: SliderMap, jointOutputs: Out
       targetJoints[spec.name] = clamp(next, spec.lower, spec.upper);
       if (updateControls && jointSliders[spec.name] && jointOutputs[spec.name]) {
         jointSliders[spec.name].value = String(targetJoints[spec.name] * RAD2DEG);
-        jointOutputs[spec.name].textContent = formatDeg(targetJoints[spec.name]);
+        setText(jointOutputs[spec.name], formatDeg(targetJoints[spec.name]));
       }
     }
   }
@@ -70,13 +75,14 @@ export function createJointStateStore(jointSliders: SliderMap, jointOutputs: Out
       }
       if (options.updateControls && jointSliders[spec.name] && jointOutputs[spec.name]) {
         jointSliders[spec.name].value = String(clamped * RAD2DEG);
-        jointOutputs[spec.name].textContent = formatDeg(clamped);
+        setText(jointOutputs[spec.name], formatDeg(clamped));
       }
     }
   }
 
   function applyStep(robot: RobotDefinition, speedScale: number, delta: number, force = false) {
     let moving = false;
+    let changed = false;
     for (const spec of robot.jointSpecs) {
       const current = currentJoints[spec.name];
       const target = clamp(targetJoints[spec.name], spec.lower, spec.upper);
@@ -85,15 +91,25 @@ export function createJointStateStore(jointSliders: SliderMap, jointOutputs: Out
         moving = true;
       }
       const maxStep = spec.velocity * speedScale * delta;
-      currentJoints[spec.name] = force ? target : current + clamp(diff, -maxStep, maxStep);
-      if (jointOutputs[spec.name]) {
-        jointOutputs[spec.name].textContent = formatDeg(currentJoints[spec.name]);
+      const next = force || Math.abs(diff) <= 0.0005 ? target : current + clamp(diff, -maxStep, maxStep);
+      if (Math.abs(next - current) > 1e-9) {
+        changed = true;
+        currentJoints[spec.name] = next;
+        if (jointOutputs[spec.name]) {
+          setText(jointOutputs[spec.name], formatDeg(next));
+        }
       }
     }
-    return moving;
+    return { changed, moving };
   }
 
   return { currentJoints, targetJoints, syncRobot, getCurrent, setTargets, setCurrent, applyStep };
+}
+
+function setText(node: Node, value: string) {
+  if (node.textContent !== value) {
+    node.textContent = value;
+  }
 }
 
 export function readJointSliderRadians(input: HTMLInputElement) {

@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import type { URDFLink } from 'urdf-loader';
-import type { JointName } from '../robots';
 
 export interface CollisionMesh {
   name: string;
   linkName: string;
+  link: URDFLink;
   mesh: THREE.Mesh;
 }
+
+export type CollisionPair = readonly [number, number];
 
 export interface InertialLink {
   link: URDFLink;
@@ -14,10 +16,4 @@ export interface InertialLink {
   mass: number;
   localCog: THREE.Vector3;
   marker: THREE.Mesh;
-}
-
-export interface TorqueSample {
-  jointName: JointName;
-  torque: number;
-  effort: number;
 }

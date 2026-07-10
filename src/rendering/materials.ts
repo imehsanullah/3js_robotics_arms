@@ -7,7 +7,6 @@ export interface RobotMaterials {
   target: THREE.MeshStandardMaterial;
   com: THREE.MeshStandardMaterial;
   totalCom: THREE.MeshStandardMaterial;
-  graspObject: THREE.MeshStandardMaterial;
 }
 
 export function createRobotMaterials(): RobotMaterials {
@@ -46,11 +45,6 @@ export function createRobotMaterials(): RobotMaterials {
       color: 0x16a34a,
       emissive: 0x063a18,
       roughness: 0.35,
-    }),
-    graspObject: new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 0.46,
-      metalness: 0.05,
     }),
   };
 }

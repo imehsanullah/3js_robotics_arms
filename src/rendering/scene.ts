@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { RobotDefinition } from '../robots';
 
-export interface RobotScene {
+interface RobotScene {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
   resize: () => void;
   resetCamera: (robot: RobotDefinition) => void;
+  dispose: () => void;
 }
 
 export function createRobotScene(canvas: HTMLCanvasElement): RobotScene {
@@ -16,8 +17,7 @@ export function createRobotScene(canvas: HTMLCanvasElement): RobotScene {
   renderer.setClearColor(0xe9edf1, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xe9edf1);
@@ -38,6 +38,7 @@ export function createRobotScene(canvas: HTMLCanvasElement): RobotScene {
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -49,7 +50,18 @@ export function createRobotScene(canvas: HTMLCanvasElement): RobotScene {
     controls.update();
   }
 
-  return { renderer, scene, camera, controls, resize, resetCamera };
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(canvas);
+  window.addEventListener('resize', resize);
+
+  function dispose() {
+    resizeObserver.disconnect();
+    window.removeEventListener('resize', resize);
+    controls.dispose();
+    renderer.dispose();
+  }
+
+  return { renderer, scene, camera, controls, resize, resetCamera, dispose };
 }
 
 function setupSceneLightsAndFloor(scene: THREE.Scene) {

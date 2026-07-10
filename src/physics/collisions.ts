@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { URDFCollider, URDFLink, URDFRobot } from 'urdf-loader';
-import type { RobotDefinition } from '../robots';
-import type { CollisionMesh } from './types';
+import type { CollisionMesh, CollisionPair } from './types';
 
 export function collectCollisionMeshes(model: URDFRobot, material: THREE.Material) {
   const collisionMeshes: CollisionMesh[] = [];
@@ -27,6 +26,7 @@ export function collectCollisionMeshes(model: URDFRobot, material: THREE.Materia
       collisionMeshes.push({
         name,
         linkName: link?.urdfName ?? link?.name ?? name,
+        link: link ?? model,
         mesh,
       });
     });
@@ -34,34 +34,43 @@ export function collectCollisionMeshes(model: URDFRobot, material: THREE.Materia
   return collisionMeshes;
 }
 
-export function buildCollisionPairs(robot: RobotDefinition, collisionMeshes: CollisionMesh[]) {
-  const collisionPairSet = new Set<string>();
-  const disabledPairs = new Set(robot.collision.disabledPairs.map(pair => pairKey(pair[0], pair[1])));
-  const adjacentPairs = new Set<string>();
-  for (const chain of robot.collision.adjacentLinkChains) {
-    for (let index = 1; index < chain.length; index += 1) {
-      adjacentPairs.add(pairKey(chain[index - 1], chain[index]));
-    }
-  }
-
+export function buildCollisionPairs(collisionMeshes: CollisionMesh[]) {
+  const pairs: CollisionPair[] = [];
   for (let i = 0; i < collisionMeshes.length; i += 1) {
     for (let j = i + 1; j < collisionMeshes.length; j += 1) {
       const a = collisionMeshes[i];
       const b = collisionMeshes[j];
-      const key = pairKey(a.linkName, b.linkName);
-      if (disabledPairs.has(key) || adjacentPairs.has(key)) {
+      if (a.link === b.link || areAdjacentLinks(a.link, b.link)) {
         continue;
       }
-      collisionPairSet.add(`${i}:${j}`);
+      pairs.push([i, j]);
     }
   }
+  return pairs;
+}
 
-  return collisionPairSet;
+export function findIntersectingPairKeys(collisionMeshes: CollisionMesh[], collisionPairs: CollisionPair[]) {
+  const intersections = new Set<string>();
+  const matrix = new THREE.Matrix4();
+  for (const [aIndex, bIndex] of collisionPairs) {
+    const a = collisionMeshes[aIndex];
+    const b = collisionMeshes[bIndex];
+    a.mesh.updateWorldMatrix(true, false);
+    b.mesh.updateWorldMatrix(true, false);
+    matrix.copy(a.mesh.matrixWorld).invert().multiply(b.mesh.matrixWorld);
+    const boundsTree = (a.mesh.geometry as THREE.BufferGeometry & {
+      boundsTree?: { intersectsGeometry: (geometry: THREE.BufferGeometry, matrix: THREE.Matrix4) => boolean };
+    }).boundsTree;
+    if (boundsTree?.intersectsGeometry(b.mesh.geometry, matrix)) {
+      intersections.add(collisionPairKey(aIndex, bIndex));
+    }
+  }
+  return intersections;
 }
 
 export function detectCollisions(
   collisionMeshes: CollisionMesh[],
-  collisionPairSet: Set<string>,
+  collisionPairs: CollisionPair[],
   collisionMaterial: THREE.Material,
   collisionHitMaterial: THREE.Material,
 ) {
@@ -71,8 +80,7 @@ export function detectCollisions(
   }
 
   const matrix = new THREE.Matrix4();
-  for (const key of collisionPairSet) {
-    const [aIndex, bIndex] = key.split(':').map(Number);
+  for (const [aIndex, bIndex] of collisionPairs) {
     const a = collisionMeshes[aIndex];
     const b = collisionMeshes[bIndex];
     a.mesh.updateWorldMatrix(true, false);
@@ -104,7 +112,7 @@ export function setCollisionVisibility(collisionMeshes: CollisionMesh[], visible
   }
 }
 
-function findParentLink(object: THREE.Object3D): URDFLink | null {
+function findParentLink(object: THREE.Object3D | null): URDFLink | null {
   let current: THREE.Object3D | null = object;
   while (current) {
     const maybeLink = current as Partial<URDFLink>;
@@ -116,6 +124,24 @@ function findParentLink(object: THREE.Object3D): URDFLink | null {
   return null;
 }
 
-function pairKey(a: string, b: string) {
-  return [a, b].sort().join('::');
+function areAdjacentLinks(a: URDFLink, b: URDFLink) {
+  const aToB = movableJointsToAncestor(a, b);
+  const bToA = movableJointsToAncestor(b, a);
+  return (aToB !== null && aToB <= 1) || (bToA !== null && bToA <= 1);
+}
+
+function movableJointsToAncestor(descendant: THREE.Object3D, ancestor: THREE.Object3D) {
+  let current: THREE.Object3D | null = descendant.parent;
+  let movableJoints = 0;
+  while (current) {
+    if (current === ancestor) return movableJoints;
+    const joint = current as Partial<{ isURDFJoint: boolean; jointType: string }>;
+    if (joint.isURDFJoint && joint.jointType !== 'fixed') movableJoints += 1;
+    current = current.parent;
+  }
+  return null;
+}
+
+export function collisionPairKey(aIndex: number, bIndex: number) {
+  return `${aIndex}:${bIndex}`;
 }

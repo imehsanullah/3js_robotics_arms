@@ -1,12 +1,10 @@
 import {
-  Activity,
   Camera,
   CircleStop,
   Crosshair,
   FoldHorizontal,
   Grip,
   Home,
-  Layers,
   Pause,
   Play,
   Route,
@@ -18,14 +16,12 @@ import {
 } from 'lucide';
 
 const icons = {
-  Activity,
   Camera,
   CircleStop,
   Crosshair,
   FoldHorizontal,
   Grip,
   Home,
-  Layers,
   Play,
   Pause,
   Route,

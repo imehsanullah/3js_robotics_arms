@@ -1,100 +1,107 @@
-# Three.js Robot Physics
+# Three.js Robot Workbench
 
-Interactive Three.js robot visualization and kinematic action platform. The current registry includes UR5e, Franka Research 3, and UFACTORY xArm7.
-
-## Preview
-
-The browser UI pairs joint sliders, IK target controls, Move Group presets, and scene overlays with each robot model.
+An interactive browser workbench for the UR5e, Franka Research 3, and UFACTORY xArm7. It loads official visual and collision meshes, mounts a real Robotiq 2F-85 URDF, and provides kinematic motion, position-only IK, sampled collision planning, and robotics readouts.
 
 ![xArm7 in the browser](docs/images/xarm7-browser-ui.png)
 
-![xArm7 motion preview](docs/images/xarm7-browser-demo.gif)
+## Run locally
 
-**UFACTORY xArm7**
+Use Node.js `^20.19.0` or `>=22.12.0` (the Docker image uses Node 24):
 
-![UR5e in the browser](docs/images/ur5e-browser-ui.png)
+```bash
+npm ci
+npm run dev
+```
 
-![UR5e motion preview](docs/images/ur5e-browser-demo.gif)
+Vite prints the local URL, normally `http://localhost:5173`.
 
-**Universal Robots UR5e**
+The project commands have separate meanings:
 
-![Franka Research 3 (FR3) in the browser](docs/images/fr3-browser-ui.png)
+```bash
+npm run typecheck  # strict TypeScript only
+npm test           # focused unit tests only
+npm run test:e2e   # Playwright browser smoke and layout tests
+npm run build      # production bundle only
+npm run check      # typecheck + unit tests + production build
+npm run preview    # serve the completed production build
+```
 
-![Franka Research 3 motion preview](docs/images/fr3-browser-demo.gif)
-
-**Franka Research 3 (FR3)**
-
-## Run
-
-With Docker:
+## Run with Docker
 
 ```bash
 docker compose up --build
 ```
 
-Then open `http://localhost:5174`. To use a different host port:
+Open `http://localhost:5174`, or choose another host port:
 
 ```bash
 APP_PORT=5175 docker compose up --build
 ```
 
-Stop it with:
+Compose bind-mounts the repository at `/app` for live source updates and mounts `/app/node_modules` as a named volume so host dependencies never replace Linux dependencies. That volume persists across normal restarts. After changing `package-lock.json`, recreate it from the rebuilt image:
 
 ```bash
-docker compose down
+docker compose down -v
+docker compose up --build
 ```
 
-Local Node:
+Stop without deleting the dependency volume with `docker compose down`.
 
-```bash
-npm install
-npm run dev
-```
+## Deploy to GitHub Pages
 
-The app serves browser-ready URDFs and meshes from `public/*_description`.
+Pushes to `main` deploy the production build to:
 
-## What Is Implemented
+`https://imehsanullah.github.io/robotics_arms_web_threejs/`
 
-- Robot picker for UR5e, Franka Research 3, and xArm7.
-- Static browser-ready URDFs generated from upstream ROS xacro/config data.
-- Official visual and collision meshes under `public/`.
-- Robotiq 2F-85 gripper mounted on the end of the arm.
-- Revolute joint hierarchy, limits, effort limits, and max-velocity constrained motion.
-- Forward kinematics with live tool-frame or gripper TCP pose.
-- CCD inverse kinematics for a movable tool target.
-- Mouse-draggable pose target in the 3D viewport.
-- Browser-only `MoveGroupLite` API for named targets, joint targets, pose targets, planning, execution, and stop.
-- Collision checking between non-adjacent official collision meshes using BVH mesh intersection.
-- Inertial mass properties, per-link center of mass markers, total center of mass, and gravity torque estimates per joint.
-- Robot definitions are loaded from JSON configs under `public/robots/` and describe groups, frames, capabilities, presets, and actions.
-- Config-driven robot metadata keeps arm-style manipulators extendable without robot-specific runtime code.
-- A `SimulationBackend` interface is in place so a real physics backend can be added later without replacing the UI/control layer.
+The Pages workflow sets `VITE_BASE_PATH=/robotics_arms_web_threejs/` so bundled files, robot configs, URDFs, and meshes load from the repository subpath. Local npm and Docker development leave this variable unset and continue to use `/`.
 
-## Browser APIs
+Before the first deployment, open the repository's **Settings → Pages** and select **GitHub Actions** as the build source. The generated `dist` directory is deployed as an Actions artifact and remains untracked.
 
-Move groups, gripper helpers, and keyframe actions are exposed on `window` in devtools. See [docs/BROWSER_API.md](docs/BROWSER_API.md).
+## User-visible workflows
 
-## Code Structure
+- Switch among UR5e, FR3, and xArm7 without reloading the page.
+- Drive joints with sliders or the explicit Zero, Ready, Folded, and Reach presets.
+- Play each robot's default keyframe action and stop any active motion.
+- Drag the Cartesian target in the viewport or edit its XYZ sliders, then solve position-only CCD IK.
+- Plan and execute named, joint, or pose targets through `MoveGroupLite`.
+- Animate the Robotiq adaptive linkage and inspect its command and estimated jaw opening.
+- Toggle official collision meshes, mounted-link inertial markers, total COM, and tool/TCP overlays.
+- Inspect collision state, total mass, tool reach, and center-of-mass height.
 
-- `src/main.ts`: app orchestration only.
-- `src/endEffectors/`: configurable end-effector controls and runtime state.
-- `public/robots/`: robot registry index and per-robot JSON configs.
-- `src/robots/`: generic robot types, config loading, validation, normalization, and helpers.
-- `src/rendering/`: scene setup, URDF loading, materials, overlays, disposal.
-- `src/physics/`: collision collection/checks, inertials/COM, gravity torque readouts.
-- `src/motion/`: joint state, CCD IK, and keyframe action playback.
-- `src/simulation/`: backend interface and current kinematic backend.
-- `src/ui/`: DOM bindings, robot selector, controls, and readouts.
+The documented console API is in [docs/BROWSER_API.md](docs/BROWSER_API.md). Robot configuration fields and validation rules are in [docs/ROBOT_CONFIG.md](docs/ROBOT_CONFIG.md).
 
-## Adding Another Robot
+## Architecture
 
-1. Copy the upstream robot description assets into `public/<package_name>` and preserve the upstream license.
-2. Generate a static URDF that keeps `package://<package_name>/...` mesh references.
-3. Add `public/robots/<robot_id>/robot.json` with joint specs, groups, frame aliases, presets, actions, capabilities, collision metadata, downstream link map, and camera defaults.
-4. Optionally add `endEffectors` entries that point to browser-ready end-effector URDF packages and define mount frames, TCP offsets, command joints, and parallel-grip contact previews.
-5. Add that config path to `public/robots/index.json`.
-6. The selector, controls, action playback, physics overlays, gripper controls, and `MoveGroupLite` groups are built from that config automatically.
+- `src/main.ts` bootstraps the app, binds high-level controls, schedules rendering, and coordinates motion.
+- `src/app/robotRuntime.ts` owns a loaded arm plus optional gripper, collision tuples, all mounted inertials, mass, and disposal.
+- `src/app/browserApi.ts` installs and clears the documented browser globals.
+- `src/motion/` contains the joint store, motion cancellation, action sampling, CCD IK, and `MoveGroupLite`.
+- `src/robots/` loads and validates the JSON registry. Structural relationships are derived from the loaded URDF hierarchy.
+- `src/rendering/` contains the Three.js scene, URDF loader, overlays, target drag, materials, BVH setup, and disposal.
+- `src/physics/` derives collision candidates and inertial ancestry and computes COM.
+- `src/ui/` builds controls and reuses readout nodes.
+- `public/*_description/` contains browser-ready URDF packages and retained upstream licenses.
 
-## Asset Source
+URDF/BVH machinery is loaded as a separate production chunk. Expensive collision, COM, and readout work runs only when state is dirty and is bounded to 10 Hz during motion; rendering and camera controls remain frame-driven.
 
-See [docs/ASSETS.md](docs/ASSETS.md). Copied upstream licenses are kept under each package directory in `public/`.
+## Adding a robot
+
+1. Copy the required upstream description assets into `public/<package_name>` and retain their license.
+2. Generate a static browser-readable URDF while preserving `package://<package_name>/...` mesh references.
+3. Add `public/robots/<robot_id>/robot.json` following [docs/ROBOT_CONFIG.md](docs/ROBOT_CONFIG.md).
+4. Add its config URL to `public/robots/index.json`.
+5. Add Playwright coverage for its control count, Ready/Reach plans, initial target, assets, and canvas resize behavior.
+
+No JSON inheritance layer is used; each small robot binding remains explicit.
+
+## Important limitations
+
+- Motion is kinematic. This is not a dynamic physics simulator and does not model acceleration, momentum, actuator control, or contact response.
+- CCD IK solves tool/TCP position only. Orientation fields are accepted for API compatibility but produce a warning and are not solved.
+- Collision planning samples a joint-space trajectory (up to roughly 30 intermediate samples plus the goal). It is not MoveIt, continuous collision detection, or a proof that the swept path is collision-free.
+- The gripper jaw-gap readout interpolates the Robotiq 2F-85's published 85–8 mm range from its command joint.
+- The app runs entirely in the browser and does not connect to robot hardware or ROS.
+
+## Assets and licenses
+
+Exact upstream repositories, verified revisions, generated-URDF notes, and local asset changes are recorded in [docs/ASSETS.md](docs/ASSETS.md). Project code is BSD-3-Clause under [LICENSE](LICENSE); vendored assets remain under their own untouched licenses in `public/*_description/LICENSE`.

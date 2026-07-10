@@ -1,7 +1,7 @@
 import { clamp, cloneJointValues } from '../robots';
 import type { JointValues, RobotActionDefinition, RobotDefinition } from '../robots';
 
-export interface ActionPlayerState {
+interface ActionPlayerState {
   actionName: string | null;
   elapsed: number;
   playing: boolean;
@@ -58,7 +58,7 @@ export class ActionPlayer {
 }
 
 export function sampleAction(robot: RobotDefinition, action: RobotActionDefinition, time: number): JointValues {
-  const sortedKeyframes = [...action.keyframes].sort((a, b) => a.time - b.time);
+  const sortedKeyframes = action.keyframes;
   if (sortedKeyframes.length === 0) {
     return cloneJointValues(robot, {});
   }

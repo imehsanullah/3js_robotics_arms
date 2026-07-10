@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { URDFJoint, URDFRobot } from 'urdf-loader';
 import { clamp, cloneJointValues } from '../robots';
 import type { JointValues, RobotDefinition } from '../robots';
-import type { CartesianPoseTarget, IkResult } from '../moveGroupLite';
+import type { CartesianPoseTarget, IkResult } from './moveGroup';
 import { getRobotFrame } from '../rendering/robotLoader';
 
-export interface CcdIkOptions {
+interface CcdIkOptions {
   robot: RobotDefinition;
   model: URDFRobot | null;
   toolFrameName: string;

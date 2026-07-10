@@ -8,7 +8,7 @@ interface UrdfVisualLike {
   isURDFVisual?: boolean;
 }
 
-export function createUrdfLoader(
+function createUrdfLoader(
   manager: THREE.LoadingManager,
   robots: RobotDefinition[],
   extraPackages: Record<string, string> = {},

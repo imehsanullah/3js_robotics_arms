@@ -56,10 +56,7 @@ export function buildEndEffectorControls(
 
   const meta = document.createElement('div');
   meta.className = 'joint-meta';
-  const gripMode = definition.parallelGrip
-    ? ` | ${definition.parallelGrip.motionMode === 'parallel-pinch' ? 'parallel pinch' : 'adaptive linkage'}`
-    : '';
-  meta.textContent = `${definition.shortName} | ${definition.command.velocity.toFixed(1)} rad/s${gripMode}`;
+  meta.textContent = `${definition.shortName} | adaptive linkage | ${definition.command.velocity.toFixed(1)} rad/s`;
 
   heading.append(label, output);
   container.append(heading, input, actions, meta);

@@ -13,11 +13,9 @@
   --ink: #162029;
   --muted: #65727d;
   --blue: #008ccf;
-  --teal: #0f766e;
   --green: #16a34a;
   --amber: #d97706;
   --red: #dc2626;
-  --control: #eef3f6;
   --shadow: 0 16px 38px rgba(32, 45, 58, 0.15);
 }
 
@@ -43,7 +41,9 @@ button {
 }
 
 #app-shell {
+  height: 100dvh;
   min-height: 100dvh;
+  overflow: hidden;
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr);
   background: #e9edf1;
@@ -144,12 +144,14 @@ button {
 
 .workbench {
   min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(290px, 340px) minmax(460px, 1fr) minmax(300px, 360px);
 }
 
 .panel {
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -187,17 +189,14 @@ h1 {
 
 output,
 .joint-meta,
-.quiet,
-.asset-section p {
+.quiet {
   color: var(--muted);
 }
 
 .joint-controls,
 .gripper-controls,
 .target-controls,
-.move-group-controls,
-.torque-readout,
-.collision-readout {
+.move-group-controls {
   display: grid;
   gap: 11px;
 }
@@ -391,61 +390,10 @@ dd {
   overflow-wrap: anywhere;
 }
 
-.torque-row {
-  display: grid;
-  grid-template-columns: minmax(84px, 0.8fr) minmax(70px, 1fr) minmax(72px, auto);
-  gap: 9px;
-  align-items: center;
-  font-size: 12px;
-}
-
-.torque-row span:first-child {
-  font-weight: 800;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.torque-bar {
-  height: 8px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: #e2e8ed;
-}
-
-.torque-bar span {
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: inherit;
-  background: var(--green);
-}
-
-.torque-bar span.is-warm {
-  background: var(--amber);
-}
-
-.torque-bar span.is-hot {
-  background: var(--red);
-}
-
-.torque-row output {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.collision-pair,
-.quiet,
-.asset-section p {
+.quiet {
   margin: 0;
   font-size: 13px;
   line-height: 1.4;
-}
-
-.collision-pair {
-  color: var(--red);
-  font-weight: 800;
 }
 
 .sr-only {
@@ -462,6 +410,8 @@ dd {
 
 @media (max-width: 1180px) {
   #app-shell {
+    height: auto;
+    overflow: visible;
     grid-template-rows: auto minmax(0, 1fr);
   }
 
@@ -472,6 +422,7 @@ dd {
   }
 
   .workbench {
+    overflow: visible;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(480px, 62dvh) auto auto;
   }

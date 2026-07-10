@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Three.js Robotics</title>
+    <title>RobotArm Web</title>
   </head>
   <body>
     <div id="app-shell">
@@ -56,6 +56,43 @@
               <output id="gripper-state">Loading</output>
             </div>
             <div id="gripper-controls" class="gripper-controls"></div>
+          </section>
+
+        </aside>
+
+        <main class="viewport" aria-label="Robot 3D viewport">
+          <canvas id="scene"></canvas>
+          <div class="hud top-hud">
+            <span id="asset-state">Loading URDF</span>
+            <span id="collision-state">Collision: pending</span>
+          </div>
+          <div class="hud pose-hud" id="pose-hud">Tool pose unavailable</div>
+        </main>
+
+        <aside class="panel physics-panel" aria-label="Robot state and controls">
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>Robot State</h2>
+              <span class="status-pill" id="robot-ready">Pending</span>
+            </div>
+            <dl class="metrics-grid">
+              <div>
+                <dt>Total mass</dt>
+                <dd id="mass-output">-- kg</dd>
+              </div>
+              <div>
+                <dt>Tool reach</dt>
+                <dd id="reach-output">-- m</dd>
+              </div>
+              <div>
+                <dt>COM height</dt>
+                <dd id="com-output">-- m</dd>
+              </div>
+              <div>
+                <dt>Meshes</dt>
+                <dd id="mesh-output">--</dd>
+              </div>
+            </dl>
           </section>
 
           <section class="panel-section">
@@ -115,65 +152,6 @@
               <input id="speed-scale" type="range" min="0.15" max="2.5" step="0.05" value="1" />
               <output id="speed-scale-output">1.00x</output>
             </label>
-          </section>
-        </aside>
-
-        <main class="viewport" aria-label="Robot 3D viewport">
-          <canvas id="scene"></canvas>
-          <div class="hud top-hud">
-            <span id="asset-state">Loading URDF</span>
-            <span id="collision-state">Collision: pending</span>
-          </div>
-          <div class="hud pose-hud" id="pose-hud">Tool pose unavailable</div>
-        </main>
-
-        <aside class="panel physics-panel" aria-label="Physics readouts">
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Robot State</h2>
-              <span class="status-pill" id="robot-ready">Pending</span>
-            </div>
-            <dl class="metrics-grid">
-              <div>
-                <dt>Total mass</dt>
-                <dd id="mass-output">-- kg</dd>
-              </div>
-              <div>
-                <dt>Tool reach</dt>
-                <dd id="reach-output">-- m</dd>
-              </div>
-              <div>
-                <dt>COM height</dt>
-                <dd id="com-output">-- m</dd>
-              </div>
-              <div>
-                <dt>Meshes</dt>
-                <dd id="mesh-output">--</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Gravity Torque</h2>
-              <i data-lucide="activity" aria-hidden="true"></i>
-            </div>
-            <div id="torque-readout" class="torque-readout"></div>
-          </section>
-
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Collision Pairs</h2>
-              <i data-lucide="layers" aria-hidden="true"></i>
-            </div>
-            <div id="collision-readout" class="collision-readout"></div>
-          </section>
-
-          <section class="panel-section asset-section">
-            <div class="section-heading">
-              <h2>Asset Source</h2>
-            </div>
-            <p id="asset-description">Universal Robots ROS2 description package, UR5e visual DAE and collision STL meshes.</p>
           </section>
         </aside>
       </div>

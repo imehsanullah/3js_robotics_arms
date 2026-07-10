@@ -7,10 +7,6 @@ export function getDefaultPreset(robot: RobotDefinition) {
   return robot.presets.ready ?? robot.presets.zero;
 }
 
-export function getDefaultGroup(robot: RobotDefinition) {
-  return robot.groups[robot.defaultGroup] ?? Object.values(robot.groups)[0];
-}
-
 export function getFrameName(robot: RobotDefinition, frameKey = robot.defaultToolFrame) {
   return robot.toolFrames[frameKey] ?? frameKey;
 }
@@ -19,7 +15,7 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-export function clampJointValues(robot: RobotDefinition, jointValues: Partial<JointValues>) {
+function clampJointValues(robot: RobotDefinition, jointValues: Partial<JointValues>) {
   const clamped: JointValues = {};
   for (const spec of robot.jointSpecs) {
     const value = jointValues[spec.name] ?? 0;

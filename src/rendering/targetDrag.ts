@@ -11,6 +11,7 @@ interface TargetDragOptions {
   targetPosition: THREE.Vector3;
   targetControls: TargetControlMaps;
   onDragStart?: () => void;
+  onDrag?: () => void;
 }
 
 export function installTargetDrag(options: TargetDragOptions) {
@@ -92,6 +93,7 @@ export function installTargetDrag(options: TargetDragOptions) {
     updatePointer(event);
     if (raycaster.ray.intersectPlane(dragPlane, planeHit)) {
       setTargetFromWorldPosition(planeHit.add(dragOffset));
+      options.onDrag?.();
     }
   }
 

@@ -1,67 +1,67 @@
 {
-  "id": "xarm7",
-  "name": "UFACTORY xArm7",
-  "shortName": "xArm7",
-  "description": "Official UFACTORY xArm7 ROS2 meshes and kinematics",
-  "packageName": "xarm_description",
-  "packagePath": "/xarm_description",
-  "urdfPath": "/xarm_description/urdf/xarm7.urdf",
+  "id": "fr3",
+  "name": "Franka Research 3",
+  "shortName": "FR3",
+  "description": "Official Franka Research 3 model with white FR3 visual meshes",
+  "packageName": "franka_description",
+  "packagePath": "/franka_description",
+  "urdfPath": "/franka_description/urdf/fr3.urdf",
   "jointSpecs": [
     {
       "name": "joint1",
       "label": "Joint 1",
-      "lower": -6.283185307179586,
-      "upper": 6.283185307179586,
-      "velocity": 3.14,
-      "effort": 50
+      "lower": -2.9007,
+      "upper": 2.9007,
+      "velocity": 2.62,
+      "effort": 87
     },
     {
       "name": "joint2",
       "label": "Joint 2",
-      "lower": -2.059,
-      "upper": 2.0944,
-      "velocity": 3.14,
-      "effort": 50
+      "lower": -1.8361,
+      "upper": 1.8361,
+      "velocity": 2.62,
+      "effort": 87
     },
     {
       "name": "joint3",
       "label": "Joint 3",
-      "lower": -6.283185307179586,
-      "upper": 6.283185307179586,
-      "velocity": 3.14,
-      "effort": 30
+      "lower": -2.9007,
+      "upper": 2.9007,
+      "velocity": 2.62,
+      "effort": 87
     },
     {
       "name": "joint4",
       "label": "Joint 4",
-      "lower": -0.19198,
-      "upper": 3.927,
-      "velocity": 3.14,
-      "effort": 30
+      "lower": -3.077,
+      "upper": -0.1169,
+      "velocity": 2.62,
+      "effort": 87
     },
     {
       "name": "joint5",
       "label": "Joint 5",
-      "lower": -6.283185307179586,
-      "upper": 6.283185307179586,
-      "velocity": 3.14,
-      "effort": 30
+      "lower": -2.8763,
+      "upper": 2.8763,
+      "velocity": 5.26,
+      "effort": 12
     },
     {
       "name": "joint6",
       "label": "Joint 6",
-      "lower": -1.69297,
-      "upper": 3.141592653589793,
-      "velocity": 3.14,
-      "effort": 20
+      "lower": 0.4398,
+      "upper": 4.6216,
+      "velocity": 4.18,
+      "effort": 12
     },
     {
       "name": "joint7",
       "label": "Joint 7",
-      "lower": -6.283185307179586,
-      "upper": 6.283185307179586,
-      "velocity": 3.14,
-      "effort": 20
+      "lower": -3.0508,
+      "upper": 3.0508,
+      "velocity": 5.26,
+      "effort": 12
     }
   ],
   "groups": {
@@ -79,7 +79,7 @@
   },
   "defaultGroup": "manipulator",
   "toolFrames": {
-    "tool": "link_eef"
+    "tool": "link8"
   },
   "defaultToolFrame": "tool",
   "endEffector": {
@@ -122,37 +122,37 @@
       "joint1": 0,
       "joint2": 0,
       "joint3": 0,
-      "joint4": 0,
+      "joint4": -1.57,
       "joint5": 0,
-      "joint6": 0,
+      "joint6": 1.87,
       "joint7": 0
     },
     "ready": {
       "joint1": 0,
-      "joint2": -0.75,
+      "joint2": -0.55,
       "joint3": 0,
-      "joint4": 1.25,
+      "joint4": -2.35,
       "joint5": 0,
-      "joint6": 0.9,
-      "joint7": 0
+      "joint6": 2,
+      "joint7": 0.78
     },
     "folded": {
       "joint1": 0,
-      "joint2": -1.25,
+      "joint2": -1.2,
       "joint3": 0,
-      "joint4": 2.2,
+      "joint4": -2.75,
       "joint5": 0,
-      "joint6": 1.1,
-      "joint7": 0
+      "joint6": 2.05,
+      "joint7": 0.78
     },
     "reach": {
-      "joint1": 0.48,
-      "joint2": -0.52,
-      "joint3": 0.25,
-      "joint4": 1.42,
-      "joint5": -0.2,
-      "joint6": 1.18,
-      "joint7": 0.55
+      "joint1": 0.42,
+      "joint2": -0.25,
+      "joint3": 0.18,
+      "joint4": -1.95,
+      "joint5": 0.28,
+      "joint6": 2.22,
+      "joint7": 1.1
     }
   },
   "actions": {
@@ -165,60 +165,60 @@
           "time": 0,
           "joints": {
             "joint1": 0,
-            "joint2": -0.75,
+            "joint2": -0.55,
             "joint3": 0,
-            "joint4": 1.25,
+            "joint4": -2.35,
             "joint5": 0,
-            "joint6": 0.9,
-            "joint7": 0
+            "joint6": 2,
+            "joint7": 0.78
           }
         },
         {
           "time": 0.75,
           "joints": {
-            "joint1": 0.48,
-            "joint2": -0.52,
-            "joint3": 0.25,
-            "joint4": 1.42,
-            "joint5": -0.2,
-            "joint6": 1.18,
-            "joint7": -0.85
+            "joint1": 0.42,
+            "joint2": -0.25,
+            "joint3": 0.18,
+            "joint4": -1.95,
+            "joint5": 0.28,
+            "joint6": 2.22,
+            "joint7": -0.7
           }
         },
         {
           "time": 1.5,
           "joints": {
-            "joint1": 0.48,
-            "joint2": -0.52,
-            "joint3": 0.25,
-            "joint4": 1.42,
-            "joint5": -0.2,
-            "joint6": 1.18,
-            "joint7": 1.05
+            "joint1": 0.42,
+            "joint2": -0.25,
+            "joint3": 0.18,
+            "joint4": -1.95,
+            "joint5": 0.28,
+            "joint6": 2.22,
+            "joint7": 1.4
           }
         },
         {
           "time": 2.25,
           "joints": {
-            "joint1": 0.48,
-            "joint2": -0.52,
-            "joint3": 0.25,
-            "joint4": 1.42,
-            "joint5": -0.2,
-            "joint6": 1.18,
-            "joint7": -0.55
+            "joint1": 0.42,
+            "joint2": -0.25,
+            "joint3": 0.18,
+            "joint4": -1.95,
+            "joint5": 0.28,
+            "joint6": 2.22,
+            "joint7": -0.4
           }
         },
         {
           "time": 3,
           "joints": {
             "joint1": 0,
-            "joint2": -0.75,
+            "joint2": -0.55,
             "joint3": 0,
-            "joint4": 1.25,
+            "joint4": -2.35,
             "joint5": 0,
-            "joint6": 0.9,
-            "joint7": 0
+            "joint6": 2,
+            "joint7": 0.78
           }
         }
       ]
@@ -231,20 +231,20 @@
     "supportsIk": true
   },
   "initialTarget": {
-    "x": 0.42,
-    "y": -0.32,
+    "x": 0.34,
+    "y": -0.28,
     "z": 0.48
   },
   "camera": {
     "position": {
-      "x": 1.35,
-      "y": -1.55,
-      "z": 1.05
+      "x": 1.25,
+      "y": -1.45,
+      "z": 1.15
     },
     "target": {
-      "x": 0.12,
+      "x": 0.1,
       "y": 0,
-      "z": 0.45
+      "z": 0.55
     }
   }
 }
