@@ -47,16 +47,6 @@ docker compose up --build
 
 Stop without deleting the dependency volume with `docker compose down`.
 
-## Deploy to GitHub Pages
-
-Pushes to `main` deploy the production build to:
-
-`https://imehsanullah.github.io/robotics_arms_web_threejs/`
-
-The Pages workflow sets `VITE_BASE_PATH=/robotics_arms_web_threejs/` so bundled files, robot configs, URDFs, and meshes load from the repository subpath. Local npm and Docker development leave this variable unset and continue to use `/`.
-
-Before the first deployment, open the repository's **Settings → Pages** and select **GitHub Actions** as the build source. The generated `dist` directory is deployed as an Actions artifact and remains untracked.
-
 ## User-visible workflows
 
 - Switch among UR5e, FR3, and xArm7 without reloading the page.
@@ -82,8 +72,6 @@ The documented console API is in [docs/BROWSER_API.md](docs/BROWSER_API.md). Rob
 - `src/ui/` builds controls and reuses readout nodes.
 - `public/*_description/` contains browser-ready URDF packages and retained upstream licenses.
 
-URDF/BVH machinery is loaded as a separate production chunk. Expensive collision, COM, and readout work runs only when state is dirty and is bounded to 10 Hz during motion; rendering and camera controls remain frame-driven.
-
 ## Adding a robot
 
 1. Copy the required upstream description assets into `public/<package_name>` and retain their license.
@@ -104,4 +92,4 @@ No JSON inheritance layer is used; each small robot binding remains explicit.
 
 ## Assets and licenses
 
-Exact upstream repositories, verified revisions, generated-URDF notes, and local asset changes are recorded in [docs/ASSETS.md](docs/ASSETS.md). Project code is BSD-3-Clause under [LICENSE](LICENSE); vendored assets remain under their own untouched licenses in `public/*_description/LICENSE`.
+Upstream repositories, commit IDs, generated-URDF notes, and local asset changes are recorded in [docs/ASSETS.md](docs/ASSETS.md). Project code is BSD-3-Clause under [LICENSE](LICENSE); vendored assets remain under their own licenses in `public/*_description/LICENSE`.
