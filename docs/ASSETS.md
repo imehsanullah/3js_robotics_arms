@@ -66,6 +66,4 @@ Retained upstream licenses are:
 - `public/xarm_description/LICENSE`
 - `public/robotiq_description/LICENSE`
 
-The repository's TypeScript, HTML, CSS, tests, and documentation use the root BSD-3-Clause [LICENSE](../LICENSE).
-
 Local modifications are limited to static browser URDF generation, Robotiq mesh-directory flattening, the reduced Robotiq package metadata, robot-binding JSON, and removal of confirmed unused FP3, xArm STL-visual, and adapter assets. Runtime configuration lives under `public/robots`; its schema is documented in [ROBOT_CONFIG.md](ROBOT_CONFIG.md).

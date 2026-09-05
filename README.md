@@ -104,6 +104,6 @@ No JSON inheritance layer is used; each small robot binding remains explicit.
 - The gripper jaw-gap readout interpolates the Robotiq 2F-85's published 85–8 mm range from its command joint.
 - The app runs entirely in the browser and does not connect to robot hardware or ROS.
 
-## Assets and licenses
+## Asset sources
 
-Upstream repositories, commit IDs, generated-URDF notes, and local asset changes are recorded in [docs/ASSETS.md](docs/ASSETS.md). Project code is BSD-3-Clause under [LICENSE](LICENSE); vendored assets remain under their own licenses in `public/*_description/LICENSE`.
+Upstream repositories, commit IDs, generated-URDF notes, and local asset changes are recorded in [docs/ASSETS.md](docs/ASSETS.md). Vendored asset licenses remain alongside their packages in `public/*_description/LICENSE`.

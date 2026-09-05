@@ -4,7 +4,6 @@
   "description": "Three.js robotic-arm workbench with official URDF assets, kinematic motion, collision checks, and physics readouts.",
   "type": "module",
   "private": true,
-  "license": "BSD-3-Clause",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
