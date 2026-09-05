@@ -4,6 +4,20 @@ An interactive browser workbench for the UR5e, Franka Research 3, and UFACTORY x
 
 ![xArm7 in the browser](docs/images/xarm7-browser-ui.png)
 
+## Demos
+
+### UR5e
+
+[![UR5e target-planning demo](docs/images/ur5e-browser-demo.gif)](https://imehsanullah.github.io/robotics_arms_web_threejs/)
+
+### Franka Research 3
+
+[![FR3 target-planning demo](docs/images/fr3-browser-demo.gif)](https://imehsanullah.github.io/robotics_arms_web_threejs/)
+
+### UFACTORY xArm7
+
+[![xArm7 target-planning demo](docs/images/xarm7-browser-demo.gif)](https://imehsanullah.github.io/robotics_arms_web_threejs/)
+
 ## Run locally
 
 Use Node.js `^20.19.0` or `>=22.12.0` (the Docker image uses Node 24):
